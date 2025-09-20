@@ -50,7 +50,6 @@ export async function preparePuppeteer(): Promise<void> {
     }
   } catch (error) {
     core.warning(`Chrome installation failed: ${(error as Error).message}`)
-    // Don't throw - let it try with system Chrome
   }
 }
 
@@ -82,13 +81,11 @@ export async function resolveAssetId(
       )
     }
 
-    // Log all found assets for debugging
     core.info('📋 Available assets:')
     search.data.items.forEach((asset: any) => {
       core.info(`  - "${asset.name}" (ID: ${asset.id})`)
     })
 
-    // Match the exact name
     for (const asset of search.data.items) {
       if (asset.name === name) {
         core.info(`✅ Found exact match: "${asset.name}" (ID: ${asset.id})`)
@@ -96,7 +93,6 @@ export async function resolveAssetId(
       }
     }
 
-    // If no exact match, suggest alternatives
     const suggestions = search.data.items
       .map((asset: any) => `"${asset.name}"`)
       .join(', ')
@@ -136,7 +132,7 @@ function buildTree(currentPath: string): TreeNode {
   const stats = fs.statSync(currentPath)
 
   if (stats.isFile()) {
-    return path.basename(currentPath) // Return file name
+    return path.basename(currentPath)
   }
 
   if (stats.isDirectory()) {
@@ -182,7 +178,7 @@ export async function zipAsset(assetName: string): Promise<string> {
   }
 
   core.debug('Adding files to zip...')
-  addDirectoryToZip(workspacePath, assetName) // Use asset name as zip root folder
+  addDirectoryToZip(workspacePath, assetName)
 
   core.debug(
     'Zip content: ' + JSON.stringify(buildTree(workspacePath), null, 2)
@@ -228,7 +224,6 @@ export function deleteIfExists(_path: string): void {
 async function buildWebAndDui(): Promise<void> {
   const workspacePath = getEnv('GITHUB_WORKSPACE')
 
-  // Build web if exists
   const webPath = path.join(workspacePath, 'web')
   if (fs.existsSync(webPath)) {
     core.info('🔨 Building web files...')
@@ -264,7 +259,6 @@ async function buildWebAndDui(): Promise<void> {
     })
   }
 
-  // Build DUI if exists
   const duiPath = path.join(workspacePath, 'dui')
   if (fs.existsSync(duiPath)) {
     core.info('🔨 Building DUI files...')
@@ -328,17 +322,14 @@ export async function createEscrowedVersion(
 ): Promise<string> {
   core.info('Creating escrowed version...')
 
-  // Build web and DUI first
   await buildWebAndDui()
 
   const workspacePath = getEnv('GITHUB_WORKSPACE')
   const escrowedDir = path.join(workspacePath, 'escrowed')
 
-  // Create escrowed directory structure
   await createDirectory(escrowedDir)
   await createDirectory(path.join(escrowedDir, 'web', 'build'))
 
-  // Copy main folders and files
   const foldersToInclude = ['client', 'shared', 'locales', 'server']
   const filesToInclude = ['fxmanifest.lua', 'init.lua']
 
@@ -356,14 +347,17 @@ export async function createEscrowedVersion(
     }
   }
 
-  // Copy web/build if exists
   const webBuildPath = path.join(workspacePath, 'web', 'build')
   if (fs.existsSync(webBuildPath)) {
     copyRecursively(webBuildPath, path.join(escrowedDir, 'web', 'build'))
   }
 
-  // Add escrow ignore configuration to fxmanifest.lua
   const fxmanifestPath = path.join(escrowedDir, 'fxmanifest.lua')
+  updateFxManifestMetadata(
+    fxmanifestPath,
+    path.basename(getEnv('GITHUB_WORKSPACE'))
+  )
+
   if (fs.existsSync(fxmanifestPath)) {
     const filesToIgnore = ignoreFiles || [
       'init.lua',
@@ -378,7 +372,6 @@ export async function createEscrowedVersion(
     fs.appendFileSync(fxmanifestPath, escrowIgnore)
   }
 
-  // Create zip - use resource name from workspace folder
   const workspaceName = path.basename(getEnv('GITHUB_WORKSPACE'))
   const zipPath = `${workspaceName}.escrowed.zip`
   return await zipDirectory(escrowedDir, zipPath, workspaceName)
@@ -394,17 +387,14 @@ export async function createOpenSourceVersion(
 ): Promise<string> {
   core.info('Creating open-source version...')
 
-  // Build web and DUI first (if not already built)
   await buildWebAndDui()
 
   const workspacePath = getEnv('GITHUB_WORKSPACE')
   const openSourceDir = path.join(workspacePath, 'open-source')
 
-  // Create open-source directory structure
   await createDirectory(openSourceDir)
   await createDirectory(path.join(openSourceDir, 'web'))
 
-  // Copy main folders and files
   const foldersToInclude = ['client', 'shared', 'locales', 'server']
   const filesToInclude = ['fxmanifest.lua', 'init.lua']
 
@@ -422,14 +412,17 @@ export async function createOpenSourceVersion(
     }
   }
 
-  // Copy entire web folder except node_modules
   const webPath = path.join(workspacePath, 'web')
   if (fs.existsSync(webPath)) {
     copyRecursively(webPath, path.join(openSourceDir, 'web'), ['node_modules'])
   }
 
-  // Add escrow ignore configuration to fxmanifest.lua (ignores everything for open source)
   const fxmanifestPath = path.join(openSourceDir, 'fxmanifest.lua')
+  updateFxManifestMetadata(
+    fxmanifestPath,
+    path.basename(getEnv('GITHUB_WORKSPACE'))
+  )
+
   if (fs.existsSync(fxmanifestPath)) {
     const escrowIgnore = `
 escrow_ignore {
@@ -441,10 +434,58 @@ escrow_ignore {
     fs.appendFileSync(fxmanifestPath, escrowIgnore)
   }
 
-  // Create zip - use resource name from workspace folder
   const workspaceName = path.basename(getEnv('GITHUB_WORKSPACE'))
   const zipPath = `${workspaceName}.opensource.zip`
   return await zipDirectory(openSourceDir, zipPath, workspaceName)
+}
+
+/**
+ * Updates fxmanifest.lua with repository metadata
+ * @param fxmanifestPath Path to fxmanifest.lua file
+ * @param resourceName Name of the resource (from workspace folder)
+ */
+function updateFxManifestMetadata(
+  fxmanifestPath: string,
+  resourceName: string
+): void {
+  if (!fs.existsSync(fxmanifestPath)) {
+    return
+  }
+
+  let content = fs.readFileSync(fxmanifestPath, 'utf8')
+
+  const repoName = process.env.GITHUB_REPOSITORY || ''
+  const tagName = process.env.GITHUB_REF_NAME || '1.0.0'
+  const repoDescription =
+    process.env.GITHUB_REPOSITORY_DESCRIPTION ||
+    `${resourceName} - FiveM Resource`
+
+  const displayName = resourceName.toUpperCase().replace(/-/g, ' ')
+
+  const updates = [
+    { field: 'name', value: `'${displayName}'` },
+    { field: 'author', value: `'Koja Scripts'` },
+    { field: 'version', value: `'${tagName}'` },
+    { field: 'description', value: `'${repoDescription}'` }
+  ]
+
+  for (const { field, value } of updates) {
+    const regex = new RegExp(`^\\s*${field}\\s+[^\\n]*`, 'm')
+    const replacement = `${field} ${value}`
+
+    if (regex.test(content)) {
+      content = content.replace(regex, replacement)
+    } else {
+      const fxVersionRegex = /^(\s*fx_version\s+[^\n]*\n)/m
+      if (fxVersionRegex.test(content)) {
+        content = content.replace(fxVersionRegex, `$1${replacement}\n`)
+      } else {
+        content = `${replacement}\n${content}`
+      }
+    }
+  }
+
+  fs.writeFileSync(fxmanifestPath, content, 'utf8')
 }
 
 /**

@@ -22,24 +22,9 @@ function getCacheDirectory(): string {
  * @returns {Promise<void>} Resolves when the environment is prepared.
  */
 export async function preparePuppeteer(): Promise<void> {
-  if (process.env.RUNNER_TEMP === undefined) {
-    core.info('Running locally, skipping Puppeteer setup ...')
-    return
-  }
-
-  const cacheDirectory = getCacheDirectory()
-  const installed = await getInstalledBrowsers({
-    cacheDir: cacheDirectory
-  })
-
-  if (!installed.some(browser => browser.browser === Browser.CHROME)) {
-    core.info('Installing Chrome ...')
-    await install({
-      cacheDir: cacheDirectory,
-      browser: Browser.CHROME,
-      buildId: '131.0.6778.108'
-    })
-  }
+  // Skip custom Chrome installation - use system Chrome
+  core.info('Using system Chrome installation...')
+  return
 }
 
 export async function resolveAssetId(

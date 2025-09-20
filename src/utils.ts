@@ -378,12 +378,10 @@ export async function createEscrowedVersion(
     fs.appendFileSync(fxmanifestPath, escrowIgnore)
   }
 
-  // Create zip - use simple naming: resourcename.escrow
-  const resourceName = assetName
-    .replace(/-escrowed$/, '')
-    .replace(/-source$/, '')
-  const zipPath = `${resourceName}.escrow`
-  return await zipDirectory(escrowedDir, zipPath, resourceName)
+  // Create zip - use resource name from workspace folder
+  const workspaceName = path.basename(getEnv('GITHUB_WORKSPACE'))
+  const zipPath = `${workspaceName}.escrowed`
+  return await zipDirectory(escrowedDir, zipPath, workspaceName)
 }
 
 /**
@@ -443,12 +441,10 @@ escrow_ignore {
     fs.appendFileSync(fxmanifestPath, escrowIgnore)
   }
 
-  // Create zip - use simple naming: resourcename.opensource
-  const resourceName = assetName
-    .replace(/-escrowed$/, '')
-    .replace(/-source$/, '')
-  const zipPath = `${resourceName}.opensource`
-  return await zipDirectory(openSourceDir, zipPath, resourceName)
+  // Create zip - use resource name from workspace folder
+  const workspaceName = path.basename(getEnv('GITHUB_WORKSPACE'))
+  const zipPath = `${workspaceName}.opensource`
+  return await zipDirectory(openSourceDir, zipPath, workspaceName)
 }
 
 /**

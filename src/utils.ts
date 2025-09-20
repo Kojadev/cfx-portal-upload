@@ -46,36 +46,62 @@ export async function resolveAssetId(
   name: string,
   cookies: string
 ): Promise<string> {
-  core.debug(`Searching asset id for ${name}...`)
+  core.info(`🔍 Searching for asset: "${name}"`)
 
-  const search = await axios.get<SearchResponse>(
-    `https://portal-api.cfx.re/v1/me/assets?search=${name}&sort=asset.name&direction=asc`,
-    {
-      headers: {
-        Cookie: cookies
+  try {
+    const search = await axios.get<SearchResponse>(
+      `https://portal-api.cfx.re/v1/me/assets?search=${name}&sort=asset.name&direction=asc`,
+      {
+        headers: {
+          Cookie: cookies
+        }
+      }
+    )
+
+    core.info(`📊 Found ${search.data.items.length} assets matching search`)
+    
+    if (search.data.items.length == 0) {
+      core.error(`❌ No assets found matching: "${name}"`)
+      core.error('💡 Make sure the asset exists in your CFX Portal and the name is correct')
+      throw new Error(
+        `No assets found matching "${name}". Check if the asset exists in your CFX Portal.`
+      )
+    }
+
+    // Log all found assets for debugging
+    core.info('📋 Available assets:')
+    search.data.items.forEach(asset => {
+      core.info(`  - "${asset.name}" (ID: ${asset.id})`)
+    })
+
+    // Match the exact name
+    for (const asset of search.data.items) {
+      if (asset.name === name) {
+        core.info(`✅ Found exact match: "${asset.name}" (ID: ${asset.id})`)
+        return asset.id.toString()
       }
     }
-  )
 
-  if (search.data.items.length == 0) {
-    core.debug(JSON.stringify(search.data))
+    // If no exact match, suggest alternatives
+    const suggestions = search.data.items.map(asset => `"${asset.name}"`).join(', ')
+    core.error(`❌ No exact match found for "${name}"`)
+    core.error(`💡 Available assets: ${suggestions}`)
+    
     throw new Error(
-      `Failed to find asset id for "${name}". See debug logs for more information.`
+      `No exact match found for "${name}". Available assets: ${suggestions}`
     )
-  }
-
-  // Match the exact name
-  for (const asset of search.data.items) {
-    if (asset.name == name) {
-      core.debug('Found asset id: ' + asset.id)
-      return asset.id.toString()
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Check if your forum cookie is valid.')
+      } else if (error.response?.status === 403) {
+        throw new Error('Access denied. Make sure you have permission to view assets.')
+      }
+      core.error(`API Error: ${error.response?.status} ${error.response?.statusText}`)
     }
+    throw error
   }
-
-  core.debug(JSON.stringify(search.data))
-  throw new Error(
-    `Failed to find asset id for "${name}" exact match. See debug logs for more information.`
-  )
+}
 }
 
 export function getUrl(type: keyof typeof Urls, id?: string): string {

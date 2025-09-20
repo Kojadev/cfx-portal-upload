@@ -154,14 +154,20 @@ export async function run(): Promise<void> {
           
           if (escrowedConfig?.asset_id) {
             escrowedId = escrowedConfig.asset_id
+            core.info(`Using escrowed asset_id: ${escrowedId}`)
           } else if (escrowedConfig?.asset_name) {
+            core.info(`Looking up escrowed asset by name: ${escrowedConfig.asset_name}`)
             escrowedId = await resolveAssetId(escrowedConfig.asset_name, cookies)
           } else if (escrowedAssetId) {
             escrowedId = escrowedAssetId
+            core.info(`Using legacy escrowedAssetId: ${escrowedId}`)
           } else if (escrowedAssetName) {
+            core.info(`Looking up legacy escrowedAssetName: ${escrowedAssetName}`)
             escrowedId = await resolveAssetId(escrowedAssetName, cookies)
           } else {
-            escrowedId = await resolveAssetId(`${baseAssetName}-escrowed`, cookies)
+            const fallbackName = `${baseAssetName}-escrowed`
+            core.info(`No escrowed config found, using fallback name: ${fallbackName}`)
+            escrowedId = await resolveAssetId(fallbackName, cookies)
           }
           
           core.info('Uploading escrowed version ...')
@@ -174,14 +180,20 @@ export async function run(): Promise<void> {
           
           if (openSourceConfig?.asset_id) {
             openSourceId = openSourceConfig.asset_id
+            core.info(`Using openSource asset_id: ${openSourceId}`)
           } else if (openSourceConfig?.asset_name) {
+            core.info(`Looking up openSource asset by name: ${openSourceConfig.asset_name}`)
             openSourceId = await resolveAssetId(openSourceConfig.asset_name, cookies)
           } else if (openSourceAssetId) {
             openSourceId = openSourceAssetId
+            core.info(`Using legacy openSourceAssetId: ${openSourceId}`)
           } else if (openSourceAssetName) {
+            core.info(`Looking up legacy openSourceAssetName: ${openSourceAssetName}`)
             openSourceId = await resolveAssetId(openSourceAssetName, cookies)
           } else {
-            openSourceId = await resolveAssetId(`${baseAssetName}-source`, cookies)
+            const fallbackName = `${baseAssetName}-source`
+            core.info(`No openSource config found, using fallback name: ${fallbackName}`)
+            openSourceId = await resolveAssetId(fallbackName, cookies)
           }
           
           core.info('Uploading open source version ...')

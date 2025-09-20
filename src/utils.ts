@@ -523,7 +523,8 @@ async function zipDirectory(
     }
   }
 
-  addDirectoryToZip(sourceDir, rootFolderName)
+  // Add files directly to root of ZIP (no extra folder)
+  addDirectoryToZip(sourceDir, '')
   zipfile.end()
 
   const outputStream = fs.createWriteStream(outputZipPath)

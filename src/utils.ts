@@ -380,7 +380,7 @@ export async function createEscrowedVersion(
 
   // Create zip - use resource name from workspace folder
   const workspaceName = path.basename(getEnv('GITHUB_WORKSPACE'))
-  const zipPath = `${workspaceName}.escrowed`
+  const zipPath = `${workspaceName}.escrowed.zip`
   return await zipDirectory(escrowedDir, zipPath, workspaceName)
 }
 
@@ -443,7 +443,7 @@ escrow_ignore {
 
   // Create zip - use resource name from workspace folder
   const workspaceName = path.basename(getEnv('GITHUB_WORKSPACE'))
-  const zipPath = `${workspaceName}.opensource`
+  const zipPath = `${workspaceName}.opensource.zip`
   return await zipDirectory(openSourceDir, zipPath, workspaceName)
 }
 

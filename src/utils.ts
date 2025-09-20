@@ -231,7 +231,7 @@ async function buildWebAndDui(): Promise<void> {
   // Build web if exists
   const webPath = path.join(workspacePath, 'web')
   if (fs.existsSync(webPath)) {
-    core.info('Building web...')
+    core.info('🔨 Building web files...')
     const { spawn } = require('child_process')
 
     await new Promise<void>((resolve, reject) => {
@@ -251,7 +251,7 @@ async function buildWebAndDui(): Promise<void> {
 
           buildCmd.on('close', (buildCode: number | null) => {
             if (buildCode === 0) {
-              core.info('Web build completed successfully')
+              core.info('✅ Web build completed')
               resolve()
             } else {
               reject(new Error(`Web build failed with code ${buildCode}`))
@@ -267,7 +267,7 @@ async function buildWebAndDui(): Promise<void> {
   // Build DUI if exists
   const duiPath = path.join(workspacePath, 'dui')
   if (fs.existsSync(duiPath)) {
-    core.info('Building DUI...')
+    core.info('🔨 Building DUI files...')
     const { spawn } = require('child_process')
 
     await new Promise<void>((resolve, reject) => {
@@ -302,7 +302,7 @@ async function buildWebAndDui(): Promise<void> {
                 copyRecursively(duiBuildPath, targetDuiBuildPath)
               }
 
-              core.info('DUI build completed successfully')
+              core.info('✅ DUI build completed')
               resolve()
             } else {
               reject(new Error(`DUI build failed with code ${buildCode}`))
@@ -378,9 +378,12 @@ export async function createEscrowedVersion(
     fs.appendFileSync(fxmanifestPath, escrowIgnore)
   }
 
-  // Create zip
-  const zipPath = `${assetName}-escrowed.zip`
-  return await zipDirectory(escrowedDir, zipPath, assetName)
+  // Create zip - use simple naming: resourcename.escrow
+  const resourceName = assetName
+    .replace(/-escrowed$/, '')
+    .replace(/-source$/, '')
+  const zipPath = `${resourceName}.escrow`
+  return await zipDirectory(escrowedDir, zipPath, resourceName)
 }
 
 /**
@@ -440,9 +443,12 @@ escrow_ignore {
     fs.appendFileSync(fxmanifestPath, escrowIgnore)
   }
 
-  // Create zip
-  const zipPath = `${assetName}-source.zip`
-  return await zipDirectory(openSourceDir, zipPath, assetName)
+  // Create zip - use simple naming: resourcename.opensource
+  const resourceName = assetName
+    .replace(/-escrowed$/, '')
+    .replace(/-source$/, '')
+  const zipPath = `${resourceName}.opensource`
+  return await zipDirectory(openSourceDir, zipPath, resourceName)
 }
 
 /**

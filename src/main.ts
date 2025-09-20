@@ -218,17 +218,10 @@ export async function run(): Promise<void> {
         !!openSourceAssetId ||
         !!openSourceConfig
 
-      core.info(`🔍 Auto-detection results:`)
-      core.info(`  createEscrowed: ${createEscrowed}`)
-      core.info(`  escrowedAssetName: ${escrowedAssetName}`)
-      core.info(`  escrowedAssetId: ${escrowedAssetId}`)
-      core.info(`  escrowedConfig: ${!!escrowedConfig}`)
-      core.info(`  shouldCreateEscrowed: ${shouldCreateEscrowed}`)
-      core.info(`  createOpenSource: ${createOpenSource}`)
-      core.info(`  openSourceAssetName: ${openSourceAssetName}`)
-      core.info(`  openSourceAssetId: ${openSourceAssetId}`)
-      core.info(`  openSourceConfig: ${!!openSourceConfig}`)
-      core.info(`  shouldCreateOpenSource: ${shouldCreateOpenSource}`)
+      const uploadTypes = []
+      if (shouldCreateEscrowed) uploadTypes.push('escrowed')
+      if (shouldCreateOpenSource) uploadTypes.push('open-source')
+      core.info(`🚀 Creating versions: ${uploadTypes.join(', ')}`)
 
       // Check if we should create multiple versions
       if (shouldCreateEscrowed || shouldCreateOpenSource) {

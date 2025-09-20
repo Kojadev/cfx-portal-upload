@@ -5,7 +5,12 @@ import axios from 'axios'
 
 import { createReadStream, statSync } from 'fs'
 import { basename } from 'path'
-import { ReUploadResponse, SSOResponseBody, BuildOptions, ZipPaths } from './types'
+import {
+  ReUploadResponse,
+  SSOResponseBody,
+  BuildOptions,
+  ZipPaths
+} from './types'
 import {
   deleteIfExists,
   resolveAssetId,
@@ -39,14 +44,16 @@ export async function run(): Promise<void> {
     const skipUpload = core.getInput('skipUpload').toLowerCase() === 'true'
 
     // New inputs for CFX Portal upload options
-    const createEscrowed = core.getInput('createEscrowed').toLowerCase() === 'true'
-    const createOpenSource = core.getInput('createOpenSource').toLowerCase() === 'true'
+    const createEscrowed =
+      core.getInput('createEscrowed').toLowerCase() === 'true'
+    const createOpenSource =
+      core.getInput('createOpenSource').toLowerCase() === 'true'
     const escrowedAssetName = core.getInput('escrowedAssetName')
     const openSourceAssetName = core.getInput('openSourceAssetName')
     const escrowedAssetId = core.getInput('escrowedAssetId')
     const openSourceAssetId = core.getInput('openSourceAssetId')
     const escrowedIgnoreFiles = core.getInput('escrowedIgnoreFiles')
-    
+
     // New structured inputs
     const escrowedInput = core.getInput('escrowed')
     const openSourceInput = core.getInput('openSource')
@@ -88,50 +95,99 @@ export async function run(): Promise<void> {
       // Parse structured inputs
       let escrowedConfig: any = null
       let openSourceConfig: any = null
-      
+
+      core.info(`📝 Raw escrowedInput: ${JSON.stringify(escrowedInput)}`)
+      core.info(`📝 Raw openSourceInput: ${JSON.stringify(openSourceInput)}`)
+
       if (escrowedInput) {
+        core.info('🔧 Parsing escrowed config...')
         try {
           escrowedConfig = JSON.parse(escrowedInput)
+          core.info('✅ Parsed escrowed as JSON')
         } catch {
           // Try YAML-like parsing for simple cases
-          const lines = escrowedInput.split('\n')
+          core.info('⚠️ JSON parse failed, trying YAML-like parsing...')
+          const lines = escrowedInput.split('\n').filter(line => line.trim())
           escrowedConfig = {}
           for (const line of lines) {
             const match = line.match(/^\s*(\w+):\s*(.+)$/)
             if (match) {
               const [, key, value] = match
+              core.info(`  Found key: ${key}, value: ${value}`)
               if (key === 'escrow_ignore') {
-                escrowedConfig[key] = value.replace(/['{}']/g, '').split(',')
+                // Handle array syntax: ['item1', 'item2'] or "item1,item2"
+                if (value.includes('[') && value.includes(']')) {
+                  escrowedConfig[key] = value
+                    .replace(/[\[\]'"`]/g, '')
+                    .split(',')
+                    .map(s => s.trim())
+                } else {
+                  escrowedConfig[key] = value
+                    .replace(/[\"']/g, '')
+                    .split(',')
+                    .map(s => s.trim())
+                }
               } else {
-                escrowedConfig[key] = value.replace(/["']/g, '')
+                escrowedConfig[key] = value.replace(/[\"']/g, '').trim()
               }
             }
           }
+          core.info(
+            `✅ Parsed escrowed config: ${JSON.stringify(escrowedConfig)}`
+          )
         }
       }
-      
+
       if (openSourceInput) {
+        core.info('🔧 Parsing openSource config...')
         try {
           openSourceConfig = JSON.parse(openSourceInput)
+          core.info('✅ Parsed openSource as JSON')
         } catch {
-          const lines = openSourceInput.split('\n')
+          core.info('⚠️ JSON parse failed, trying YAML-like parsing...')
+          const lines = openSourceInput.split('\n').filter(line => line.trim())
           openSourceConfig = {}
           for (const line of lines) {
             const match = line.match(/^\s*(\w+):\s*(.+)$/)
             if (match) {
               const [, key, value] = match
-              openSourceConfig[key] = value.replace(/["']/g, '')
+              core.info(`  Found key: ${key}, value: ${value}`)
+              openSourceConfig[key] = value.replace(/[\"']/g, '').trim()
             }
           }
+          core.info(
+            `✅ Parsed openSource config: ${JSON.stringify(openSourceConfig)}`
+          )
         }
       }
-      
+
       // Auto-detect what to create based on provided asset names or configs
-      const shouldCreateEscrowed = createEscrowed || !!escrowedAssetName || !!escrowedAssetId || !!escrowedConfig
-      const shouldCreateOpenSource = createOpenSource || !!openSourceAssetName || !!openSourceAssetId || !!openSourceConfig
-      
+      const shouldCreateEscrowed =
+        createEscrowed ||
+        !!escrowedAssetName ||
+        !!escrowedAssetId ||
+        !!escrowedConfig
+      const shouldCreateOpenSource =
+        createOpenSource ||
+        !!openSourceAssetName ||
+        !!openSourceAssetId ||
+        !!openSourceConfig
+
+      core.info(`🔍 Auto-detection results:`)
+      core.info(`  createEscrowed: ${createEscrowed}`)
+      core.info(`  escrowedAssetName: ${escrowedAssetName}`)
+      core.info(`  escrowedAssetId: ${escrowedAssetId}`)
+      core.info(`  escrowedConfig: ${!!escrowedConfig}`)
+      core.info(`  shouldCreateEscrowed: ${shouldCreateEscrowed}`)
+      core.info(`  createOpenSource: ${createOpenSource}`)
+      core.info(`  openSourceAssetName: ${openSourceAssetName}`)
+      core.info(`  openSourceAssetId: ${openSourceAssetId}`)
+      core.info(`  openSourceConfig: ${!!openSourceConfig}`)
+      core.info(`  shouldCreateOpenSource: ${shouldCreateOpenSource}`)
+
       // Check if we should create multiple versions
       if (shouldCreateEscrowed || shouldCreateOpenSource) {
+        core.info('🚀 Using multi-version upload logic')
         const buildOptions: BuildOptions = {
           createEscrowed: shouldCreateEscrowed,
           createOpenSource: shouldCreateOpenSource,
@@ -142,7 +198,9 @@ export async function run(): Promise<void> {
           openSourceAssetName: openSourceAssetName || undefined,
           escrowedAssetId: escrowedAssetId || undefined,
           openSourceAssetId: openSourceAssetId || undefined,
-          escrowedIgnoreFiles: escrowedIgnoreFiles ? escrowedIgnoreFiles.split(',').map(f => f.trim()) : undefined
+          escrowedIgnoreFiles: escrowedIgnoreFiles
+            ? escrowedIgnoreFiles.split(',').map(f => f.trim())
+            : undefined
         }
 
         const baseAssetName = assetName || basename(getEnv('GITHUB_WORKSPACE'))
@@ -151,25 +209,34 @@ export async function run(): Promise<void> {
         // Upload escrowed version
         if (zipPaths.escrowed && shouldCreateEscrowed) {
           let escrowedId: string
-          
+
           if (escrowedConfig?.asset_id) {
             escrowedId = escrowedConfig.asset_id
             core.info(`Using escrowed asset_id: ${escrowedId}`)
           } else if (escrowedConfig?.asset_name) {
-            core.info(`Looking up escrowed asset by name: ${escrowedConfig.asset_name}`)
-            escrowedId = await resolveAssetId(escrowedConfig.asset_name, cookies)
+            core.info(
+              `Looking up escrowed asset by name: ${escrowedConfig.asset_name}`
+            )
+            escrowedId = await resolveAssetId(
+              escrowedConfig.asset_name,
+              cookies
+            )
           } else if (escrowedAssetId) {
             escrowedId = escrowedAssetId
             core.info(`Using legacy escrowedAssetId: ${escrowedId}`)
           } else if (escrowedAssetName) {
-            core.info(`Looking up legacy escrowedAssetName: ${escrowedAssetName}`)
+            core.info(
+              `Looking up legacy escrowedAssetName: ${escrowedAssetName}`
+            )
             escrowedId = await resolveAssetId(escrowedAssetName, cookies)
           } else {
             const fallbackName = `${baseAssetName}-escrowed`
-            core.info(`No escrowed config found, using fallback name: ${fallbackName}`)
+            core.info(
+              `No escrowed config found, using fallback name: ${fallbackName}`
+            )
             escrowedId = await resolveAssetId(fallbackName, cookies)
           }
-          
+
           core.info('Uploading escrowed version ...')
           await uploadZip(zipPaths.escrowed, escrowedId, chunkSize, cookies)
         }
@@ -177,31 +244,45 @@ export async function run(): Promise<void> {
         // Upload open source version
         if (zipPaths.openSource && shouldCreateOpenSource) {
           let openSourceId: string
-          
+
           if (openSourceConfig?.asset_id) {
             openSourceId = openSourceConfig.asset_id
             core.info(`Using openSource asset_id: ${openSourceId}`)
           } else if (openSourceConfig?.asset_name) {
-            core.info(`Looking up openSource asset by name: ${openSourceConfig.asset_name}`)
-            openSourceId = await resolveAssetId(openSourceConfig.asset_name, cookies)
+            core.info(
+              `Looking up openSource asset by name: ${openSourceConfig.asset_name}`
+            )
+            openSourceId = await resolveAssetId(
+              openSourceConfig.asset_name,
+              cookies
+            )
           } else if (openSourceAssetId) {
             openSourceId = openSourceAssetId
             core.info(`Using legacy openSourceAssetId: ${openSourceId}`)
           } else if (openSourceAssetName) {
-            core.info(`Looking up legacy openSourceAssetName: ${openSourceAssetName}`)
+            core.info(
+              `Looking up legacy openSourceAssetName: ${openSourceAssetName}`
+            )
             openSourceId = await resolveAssetId(openSourceAssetName, cookies)
           } else {
             const fallbackName = `${baseAssetName}-source`
-            core.info(`No openSource config found, using fallback name: ${fallbackName}`)
+            core.info(
+              `No openSource config found, using fallback name: ${fallbackName}`
+            )
             openSourceId = await resolveAssetId(fallbackName, cookies)
           }
-          
+
           core.info('Uploading open source version ...')
           await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies)
         }
       } else {
+        core.info('⚠️ Using single upload logic (fallback)')
+        core.info(`  assetName: ${assetName}`)
+        core.info(`  assetId: ${assetId}`)
+
         // Original single upload logic
         if (assetName) {
+          core.info(`🔍 Looking up single asset by name: ${assetName}`)
           assetId = await resolveAssetId(assetName, cookies)
         }
 

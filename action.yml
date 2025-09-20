@@ -1,5 +1,7 @@
 name: 'CFX Portal Upload'
-description: 'Uploads assets to CFX Portal with support for escrowed and open source versions'
+description:
+  'Uploads assets to CFX Portal with support for escrowed and open source
+  versions'
 author: 'Lukas Leisten'
 
 branding:
@@ -44,10 +46,12 @@ inputs:
     required: false
     default: false
   escrowedAssetName:
-    description: 'The name of the escrowed asset (defaults to [assetName]-escrowed)'
+    description:
+      'The name of the escrowed asset (defaults to [assetName]-escrowed)'
     required: false
   openSourceAssetName:
-    description: 'The name of the open source asset (defaults to [assetName]-source)'
+    description:
+      'The name of the open source asset (defaults to [assetName]-source)'
     required: false
   escrowedAssetId:
     description: 'The asset ID for escrowed version (if known)'
@@ -56,14 +60,19 @@ inputs:
     description: 'The asset ID for open source version (if known)'
     required: false
   escrowedIgnoreFiles:
-    description: 'Comma-separated list of files to ignore in escrowed version (e.g. "init.lua,shared/config.lua")'
+    description:
+      'Comma-separated list of files to ignore in escrowed version (e.g.
+      "init.lua,shared/config.lua")'
     required: false
     default: 'init.lua,shared/config.lua,shared/utils.lua,shared/startheist.lua'
   escrowed:
-    description: 'Escrowed version configuration (YAML object with asset_id, asset_name, escrow_ignore)'
+    description:
+      'Escrowed version configuration (YAML object with asset_id, asset_name,
+      escrow_ignore)'
     required: false
   openSource:
-    description: 'Open source version configuration (YAML object with asset_id, asset_name)'
+    description:
+      'Open source version configuration (YAML object with asset_id, asset_name)'
     required: false
 
 runs:

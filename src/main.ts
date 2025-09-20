@@ -28,7 +28,33 @@ import {
 export async function run(): Promise<void> {
   await preparePuppeteer()
 
-  const browser = await puppeteer.launch({
+  // Try to find system Chrome executable
+  const findChrome = () => {
+    const possiblePaths = [
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/snap/bin/chromium',
+      process.env.CHROME_BIN
+    ].filter(Boolean)
+
+    for (const path of possiblePaths) {
+      try {
+        const fs = require('fs')
+        if (fs.existsSync(path)) {
+          core.info(`Found Chrome at: ${path}`)
+          return path
+        }
+      } catch (e) {
+        // Continue searching
+      }
+    }
+    return undefined
+  }
+
+  const chromePath = findChrome()
+  const launchOptions: any = {
     headless: true,
     args: [
       '--no-sandbox',
@@ -41,7 +67,16 @@ export async function run(): Promise<void> {
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding'
     ]
-  })
+  }
+
+  if (chromePath) {
+    launchOptions.executablePath = chromePath
+    core.info(`Using Chrome executable: ${chromePath}`)
+  } else {
+    core.info('No system Chrome found, trying default Puppeteer behavior')
+  }
+
+  const browser = await puppeteer.launch(launchOptions)
 
   const page = await browser.newPage()
 

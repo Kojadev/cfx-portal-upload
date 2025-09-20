@@ -1,5 +1,5 @@
-name: 'Upload Escrow Asset'
-description: 'Uploads an escrow asset to the cfx portal'
+name: 'CFX Portal Upload'
+description: 'Uploads assets to CFX Portal with support for escrowed and open source versions'
 author: 'Lukas Leisten'
 
 branding:
@@ -35,6 +35,36 @@ inputs:
     description: 'The chunk size to split the file into'
     required: false
     default: 2097152
+  createEscrowed:
+    description: 'Create and upload escrowed version (true or false)'
+    required: false
+    default: false
+  createOpenSource:
+    description: 'Create and upload open source version (true or false)'
+    required: false
+    default: false
+  escrowedAssetName:
+    description: 'The name of the escrowed asset (defaults to [assetName]-escrowed)'
+    required: false
+  openSourceAssetName:
+    description: 'The name of the open source asset (defaults to [assetName]-source)'
+    required: false
+  escrowedAssetId:
+    description: 'The asset ID for escrowed version (if known)'
+    required: false
+  openSourceAssetId:
+    description: 'The asset ID for open source version (if known)'
+    required: false
+  escrowedIgnoreFiles:
+    description: 'Comma-separated list of files to ignore in escrowed version (e.g. "init.lua,shared/config.lua")'
+    required: false
+    default: 'init.lua,shared/config.lua,shared/utils.lua,shared/startheist.lua'
+  escrowed:
+    description: 'Escrowed version configuration (YAML object with asset_id, asset_name, escrow_ignore)'
+    required: false
+  openSource:
+    description: 'Open source version configuration (YAML object with asset_id, asset_name)'
+    required: false
 
 runs:
   using: node20

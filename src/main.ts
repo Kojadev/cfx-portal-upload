@@ -5,14 +5,15 @@ import axios from 'axios'
 
 import { createReadStream, statSync } from 'fs'
 import { basename } from 'path'
-import { ReUploadResponse, SSOResponseBody } from './types'
+import { ReUploadResponse, SSOResponseBody, BuildOptions, ZipPaths } from './types'
 import {
   deleteIfExists,
   resolveAssetId,
   getEnv,
   getUrl,
   preparePuppeteer,
-  zipAsset
+  zipAsset,
+  createVersions
 } from './utils'
 
 /**
@@ -36,6 +37,19 @@ export async function run(): Promise<void> {
     let zipPath = core.getInput('zipPath')
     const makeZip = core.getInput('makeZip').toLowerCase() === 'true'
     const skipUpload = core.getInput('skipUpload').toLowerCase() === 'true'
+
+    // New inputs for CFX Portal upload options
+    const createEscrowed = core.getInput('createEscrowed').toLowerCase() === 'true'
+    const createOpenSource = core.getInput('createOpenSource').toLowerCase() === 'true'
+    const escrowedAssetName = core.getInput('escrowedAssetName')
+    const openSourceAssetName = core.getInput('openSourceAssetName')
+    const escrowedAssetId = core.getInput('escrowedAssetId')
+    const openSourceAssetId = core.getInput('openSourceAssetId')
+    const escrowedIgnoreFiles = core.getInput('escrowedIgnoreFiles')
+    
+    // New structured inputs
+    const escrowedInput = core.getInput('escrowed')
+    const openSourceInput = core.getInput('openSource')
 
     const chunkSize = parseInt(core.getInput('chunkSize'))
     const maxRetries = parseInt(core.getInput('maxRetries'))
@@ -68,15 +82,120 @@ export async function run(): Promise<void> {
         return
       }
 
-      core.info('Redirected to CFX Portal. Uploading file ...')
+      core.info('Redirected to CFX Portal. Processing uploads ...')
       const cookies = await getCookies(browser)
 
-      if (assetName) {
-        assetId = await resolveAssetId(assetName, cookies)
+      // Parse structured inputs
+      let escrowedConfig: any = null
+      let openSourceConfig: any = null
+      
+      if (escrowedInput) {
+        try {
+          escrowedConfig = JSON.parse(escrowedInput)
+        } catch {
+          // Try YAML-like parsing for simple cases
+          const lines = escrowedInput.split('\n')
+          escrowedConfig = {}
+          for (const line of lines) {
+            const match = line.match(/^\s*(\w+):\s*(.+)$/)
+            if (match) {
+              const [, key, value] = match
+              if (key === 'escrow_ignore') {
+                escrowedConfig[key] = value.replace(/['{}']/g, '').split(',')
+              } else {
+                escrowedConfig[key] = value.replace(/["']/g, '')
+              }
+            }
+          }
+        }
       }
+      
+      if (openSourceInput) {
+        try {
+          openSourceConfig = JSON.parse(openSourceInput)
+        } catch {
+          const lines = openSourceInput.split('\n')
+          openSourceConfig = {}
+          for (const line of lines) {
+            const match = line.match(/^\s*(\w+):\s*(.+)$/)
+            if (match) {
+              const [, key, value] = match
+              openSourceConfig[key] = value.replace(/["']/g, '')
+            }
+          }
+        }
+      }
+      
+      // Auto-detect what to create based on provided asset names or configs
+      const shouldCreateEscrowed = createEscrowed || !!escrowedAssetName || !!escrowedAssetId || !!escrowedConfig
+      const shouldCreateOpenSource = createOpenSource || !!openSourceAssetName || !!openSourceAssetId || !!openSourceConfig
+      
+      // Check if we should create multiple versions
+      if (shouldCreateEscrowed || shouldCreateOpenSource) {
+        const buildOptions: BuildOptions = {
+          createEscrowed: shouldCreateEscrowed,
+          createOpenSource: shouldCreateOpenSource,
+          escrowedConfig: escrowedConfig || undefined,
+          openSourceConfig: openSourceConfig || undefined,
+          // Legacy support
+          escrowedAssetName: escrowedAssetName || undefined,
+          openSourceAssetName: openSourceAssetName || undefined,
+          escrowedAssetId: escrowedAssetId || undefined,
+          openSourceAssetId: openSourceAssetId || undefined,
+          escrowedIgnoreFiles: escrowedIgnoreFiles ? escrowedIgnoreFiles.split(',').map(f => f.trim()) : undefined
+        }
 
-      zipPath = await getZipPath(assetName, zipPath, makeZip)
-      await uploadZip(zipPath, assetId, chunkSize, cookies)
+        const baseAssetName = assetName || basename(getEnv('GITHUB_WORKSPACE'))
+        const zipPaths = await createVersions(buildOptions, baseAssetName)
+
+        // Upload escrowed version
+        if (zipPaths.escrowed && shouldCreateEscrowed) {
+          let escrowedId: string
+          
+          if (escrowedConfig?.asset_id) {
+            escrowedId = escrowedConfig.asset_id
+          } else if (escrowedConfig?.asset_name) {
+            escrowedId = await resolveAssetId(escrowedConfig.asset_name, cookies)
+          } else if (escrowedAssetId) {
+            escrowedId = escrowedAssetId
+          } else if (escrowedAssetName) {
+            escrowedId = await resolveAssetId(escrowedAssetName, cookies)
+          } else {
+            escrowedId = await resolveAssetId(`${baseAssetName}-escrowed`, cookies)
+          }
+          
+          core.info('Uploading escrowed version ...')
+          await uploadZip(zipPaths.escrowed, escrowedId, chunkSize, cookies)
+        }
+
+        // Upload open source version
+        if (zipPaths.openSource && shouldCreateOpenSource) {
+          let openSourceId: string
+          
+          if (openSourceConfig?.asset_id) {
+            openSourceId = openSourceConfig.asset_id
+          } else if (openSourceConfig?.asset_name) {
+            openSourceId = await resolveAssetId(openSourceConfig.asset_name, cookies)
+          } else if (openSourceAssetId) {
+            openSourceId = openSourceAssetId
+          } else if (openSourceAssetName) {
+            openSourceId = await resolveAssetId(openSourceAssetName, cookies)
+          } else {
+            openSourceId = await resolveAssetId(`${baseAssetName}-source`, cookies)
+          }
+          
+          core.info('Uploading open source version ...')
+          await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies)
+        }
+      } else {
+        // Original single upload logic
+        if (assetName) {
+          assetId = await resolveAssetId(assetName, cookies)
+        }
+
+        zipPath = await getZipPath(assetName, zipPath, makeZip)
+        await uploadZip(zipPath, assetId, chunkSize, cookies)
+      }
     } else {
       throw new Error(
         'Redirect failed. Make sure the provided Cookie is valid.'

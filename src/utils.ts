@@ -1,5 +1,5 @@
 import { Browser, getInstalledBrowsers, install } from '@puppeteer/browsers'
-import { SearchResponse, Urls } from './types'
+import { SearchResponse, Urls, BuildOptions, ZipPaths } from './types'
 import { homedir } from 'os'
 import { join } from 'path'
 
@@ -173,4 +173,319 @@ export function deleteIfExists(_path: string): void {
   } catch (error) {
     core.debug(`Skipping ${_path} deletion due to error: ${error as string}`)
   }
+}
+
+/**
+ * Builds web and DUI if they exist
+ */
+async function buildWebAndDui(): Promise<void> {
+  const workspacePath = getEnv('GITHUB_WORKSPACE')
+  
+  // Build web if exists
+  const webPath = path.join(workspacePath, 'web')
+  if (fs.existsSync(webPath)) {
+    core.info('Building web...')
+    const { spawn } = require('child_process')
+    
+    await new Promise<void>((resolve, reject) => {
+      const buildProcess = spawn('pnpm', ['install'], { 
+        cwd: webPath, 
+        stdio: 'inherit',
+        shell: true 
+      })
+      
+      buildProcess.on('close', (code) => {
+        if (code === 0) {
+          const buildCmd = spawn('pnpm', ['build'], { 
+            cwd: webPath, 
+            stdio: 'inherit',
+            shell: true 
+          })
+          
+          buildCmd.on('close', (buildCode) => {
+            if (buildCode === 0) {
+              core.info('Web build completed successfully')
+              resolve()
+            } else {
+              reject(new Error(`Web build failed with code ${buildCode}`))
+            }
+          })
+        } else {
+          reject(new Error(`Web install failed with code ${code}`))
+        }
+      })
+    })
+  }
+  
+  // Build DUI if exists
+  const duiPath = path.join(workspacePath, 'dui')
+  if (fs.existsSync(duiPath)) {
+    core.info('Building DUI...')
+    const { spawn } = require('child_process')
+    
+    await new Promise<void>((resolve, reject) => {
+      const installProcess = spawn('pnpm', ['install'], { 
+        cwd: duiPath, 
+        stdio: 'inherit',
+        shell: true 
+      })
+      
+      installProcess.on('close', (code) => {
+        if (code === 0) {
+          const buildCmd = spawn('pnpm', ['build'], { 
+            cwd: duiPath, 
+            stdio: 'inherit',
+            shell: true 
+          })
+          
+          buildCmd.on('close', (buildCode) => {
+            if (buildCode === 0) {
+              // Copy DUI build files
+              const duiBuildPath = path.join(duiPath, 'build')
+              const targetDuiBuildPath = path.join(workspacePath, 'dui', 'build')
+              
+              if (fs.existsSync(duiBuildPath)) {
+                if (!fs.existsSync(targetDuiBuildPath)) {
+                  fs.mkdirSync(targetDuiBuildPath, { recursive: true })
+                }
+                copyRecursively(duiBuildPath, targetDuiBuildPath)
+              }
+              
+              core.info('DUI build completed successfully')
+              resolve()
+            } else {
+              reject(new Error(`DUI build failed with code ${buildCode}`))
+            }
+          })
+        } else {
+          reject(new Error(`DUI install failed with code ${code}`))
+        }
+      })
+    })
+  }
+}
+
+/**
+ * Creates escrowed version of the asset
+ * @param assetName The name of the asset
+ * @param ignoreFiles Optional array of files to ignore in escrow
+ * @returns Path to the escrowed zip file
+ */
+export async function createEscrowedVersion(assetName: string, ignoreFiles?: string[]): Promise<string> {
+  core.info('Creating escrowed version...')
+  
+  // Build web and DUI first
+  await buildWebAndDui()
+  
+  const workspacePath = getEnv('GITHUB_WORKSPACE')
+  const escrowedDir = path.join(workspacePath, 'escrowed')
+  
+  // Create escrowed directory structure
+  await createDirectory(escrowedDir)
+  await createDirectory(path.join(escrowedDir, 'web', 'build'))
+  
+  // Copy main folders and files
+  const foldersToInclude = ['client', 'shared', 'locales', 'server']
+  const filesToInclude = ['fxmanifest.lua', 'init.lua']
+  
+  for (const folder of foldersToInclude) {
+    const srcPath = path.join(workspacePath, folder)
+    if (fs.existsSync(srcPath)) {
+      copyRecursively(srcPath, path.join(escrowedDir, folder))
+    }
+  }
+  
+  for (const file of filesToInclude) {
+    const srcPath = path.join(workspacePath, file)
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, path.join(escrowedDir, file))
+    }
+  }
+  
+  // Copy web/build if exists
+  const webBuildPath = path.join(workspacePath, 'web', 'build')
+  if (fs.existsSync(webBuildPath)) {
+    copyRecursively(webBuildPath, path.join(escrowedDir, 'web', 'build'))
+  }
+  
+  // Add escrow ignore configuration to fxmanifest.lua
+  const fxmanifestPath = path.join(escrowedDir, 'fxmanifest.lua')
+  if (fs.existsSync(fxmanifestPath)) {
+    const filesToIgnore = ignoreFiles || ['init.lua', 'shared/config.lua', 'shared/utils.lua', 'shared/startheist.lua']
+    const ignoreEntries = filesToIgnore.map(file => `  '${file}',`).join('\n')
+    const escrowIgnore = `\nescrow_ignore {\n${ignoreEntries}\n}\n`
+    fs.appendFileSync(fxmanifestPath, escrowIgnore)
+  }
+  
+  // Create zip
+  const zipPath = `${assetName}-escrowed.zip`
+  return await zipDirectory(escrowedDir, zipPath, assetName)
+}
+
+/**
+ * Creates open source version of the asset
+ * @param assetName The name of the asset
+ * @returns Path to the open source zip file
+ */
+export async function createOpenSourceVersion(assetName: string): Promise<string> {
+  core.info('Creating open-source version...')
+  
+  // Build web and DUI first (if not already built)
+  await buildWebAndDui()
+  
+  const workspacePath = getEnv('GITHUB_WORKSPACE')
+  const openSourceDir = path.join(workspacePath, 'open-source')
+  
+  // Create open-source directory structure
+  await createDirectory(openSourceDir)
+  await createDirectory(path.join(openSourceDir, 'web'))
+  
+  // Copy main folders and files
+  const foldersToInclude = ['client', 'shared', 'locales', 'server']
+  const filesToInclude = ['fxmanifest.lua', 'init.lua']
+  
+  for (const folder of foldersToInclude) {
+    const srcPath = path.join(workspacePath, folder)
+    if (fs.existsSync(srcPath)) {
+      copyRecursively(srcPath, path.join(openSourceDir, folder))
+    }
+  }
+  
+  for (const file of filesToInclude) {
+    const srcPath = path.join(workspacePath, file)
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, path.join(openSourceDir, file))
+    }
+  }
+  
+  // Copy entire web folder except node_modules
+  const webPath = path.join(workspacePath, 'web')
+  if (fs.existsSync(webPath)) {
+    copyRecursively(webPath, path.join(openSourceDir, 'web'), ['node_modules'])
+  }
+  
+  // Add escrow ignore configuration to fxmanifest.lua (ignores everything for open source)
+  const fxmanifestPath = path.join(openSourceDir, 'fxmanifest.lua')
+  if (fs.existsSync(fxmanifestPath)) {
+    const escrowIgnore = `
+escrow_ignore {
+  '/*',
+  '/**/*',
+  '/**/**/*',
+}
+`
+    fs.appendFileSync(fxmanifestPath, escrowIgnore)
+  }
+  
+  // Create zip
+  const zipPath = `${assetName}-source.zip`
+  return await zipDirectory(openSourceDir, zipPath, assetName)
+}
+
+/**
+ * Creates directory recursively
+ * @param dirPath Path to directory
+ */
+async function createDirectory(dirPath: string): Promise<void> {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true })
+  }
+}
+
+/**
+ * Copies files and directories recursively
+ * @param src Source path
+ * @param dest Destination path
+ * @param excludeDirs Directories to exclude
+ */
+function copyRecursively(src: string, dest: string, excludeDirs: string[] = []): void {
+  const stats = fs.statSync(src)
+  
+  if (stats.isDirectory()) {
+    if (excludeDirs.includes(path.basename(src))) {
+      return
+    }
+    
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest, { recursive: true })
+    }
+    
+    const entries = fs.readdirSync(src)
+    for (const entry of entries) {
+      if (excludeDirs.includes(entry)) {
+        continue
+      }
+      copyRecursively(path.join(src, entry), path.join(dest, entry), excludeDirs)
+    }
+  } else if (stats.isFile()) {
+    fs.copyFileSync(src, dest)
+  }
+}
+
+/**
+ * Creates a zip file from a directory
+ * @param sourceDir Source directory to zip
+ * @param zipPath Output zip file path
+ * @param rootFolderName Name of the root folder in the zip
+ * @returns Promise resolving to the absolute path of the created zip file
+ */
+async function zipDirectory(sourceDir: string, zipPath: string, rootFolderName: string): Promise<string> {
+  const zipfile = new yazl.ZipFile()
+  const outputZipPath = path.resolve(zipPath)
+
+  function addDirectoryToZip(dir: string, zipPath: string): void {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      const entryZipPath = path.join(zipPath, entry.name)
+      if (entry.isDirectory()) {
+        addDirectoryToZip(fullPath, entryZipPath)
+      } else if (entry.isFile()) {
+        zipfile.addFile(fullPath, entryZipPath, { compress: true })
+      }
+    }
+  }
+
+  addDirectoryToZip(sourceDir, rootFolderName)
+  zipfile.end()
+
+  const outputStream = fs.createWriteStream(outputZipPath)
+  return new Promise((resolve, reject) => {
+    zipfile.outputStream
+      .pipe(outputStream)
+      .on('close', () => {
+        core.info(`Directory zipped to ${outputZipPath}`)
+        resolve(outputZipPath)
+      })
+      .on('error', reject)
+  })
+}
+
+/**
+ * Creates both escrowed and open source versions based on options
+ * @param options Build options
+ * @param assetName Base asset name
+ * @returns Object containing paths to created zip files
+ */
+export async function createVersions(options: BuildOptions, assetName: string): Promise<ZipPaths> {
+  const zipPaths: ZipPaths = {}
+  
+  // Clean up before building
+  deleteIfExists('escrowed/')
+  deleteIfExists('open-source/')
+  
+  if (options.createEscrowed) {
+    const escrowIgnoreFiles = options.escrowedConfig?.escrow_ignore || options.escrowedIgnoreFiles
+    const escrowedName = options.escrowedConfig?.asset_name || options.escrowedAssetName || `${assetName}-escrowed`
+    
+    zipPaths.escrowed = await createEscrowedVersion(escrowedName, escrowIgnoreFiles)
+  }
+  
+  if (options.createOpenSource) {
+    zipPaths.openSource = await createOpenSourceVersion(
+      options.openSourceAssetName || `${assetName}-source`
+    )
+  }
+  
+  return zipPaths
 }

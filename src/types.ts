@@ -23,3 +23,31 @@ export enum Urls {
   UPLOAD_CHUNK = 'assets/{id}/upload-chunk',
   COMPLETE_UPLOAD = 'assets/{id}/complete-upload'
 }
+
+export interface AssetConfig {
+  asset_id?: string
+  asset_name?: string
+  escrow_ignore?: string[]
+}
+
+export interface BuildOptions {
+  createEscrowed: boolean
+  createOpenSource: boolean
+  escrowedConfig?: AssetConfig
+  openSourceConfig?: AssetConfig
+  // Legacy support
+  escrowedAssetName?: string
+  openSourceAssetName?: string
+  escrowedAssetId?: string
+  openSourceAssetId?: string
+  escrowedIgnoreFiles?: string[]
+}
+
+export interface EscrowIgnoreConfig {
+  patterns: string[]
+}
+
+export interface ZipPaths {
+  escrowed?: string
+  openSource?: string
+}

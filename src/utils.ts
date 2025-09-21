@@ -454,19 +454,21 @@ function updateFxManifestMetadata(
 
   let content = fs.readFileSync(fxmanifestPath, 'utf8')
 
-  const repoName = process.env.GITHUB_REPOSITORY || ''
   const tagName = process.env.GITHUB_REF_NAME || '1.0.0'
-  const repoDescription =
-    process.env.GITHUB_REPOSITORY_DESCRIPTION ||
-    `${resourceName} - FiveM Resource`
-
   const displayName = resourceName.toUpperCase().replace(/-/g, ' ')
+
+  const descriptionMatch = content.match(
+    /^\s*description\s+(['"`])([^'"`]*)\1/m
+  )
+  const existingDescription = descriptionMatch
+    ? descriptionMatch[2]
+    : `${resourceName} - FiveM Resource`
 
   const updates = [
     { field: 'name', value: `'${displayName}'` },
     { field: 'author', value: `'Koja Scripts'` },
     { field: 'version', value: `'${tagName}'` },
-    { field: 'description', value: `'${repoDescription}'` }
+    { field: 'description', value: `'${existingDescription}'` }
   ]
 
   for (const { field, value } of updates) {
@@ -564,7 +566,6 @@ async function zipDirectory(
     }
   }
 
-  // Add files directly to root of ZIP (no extra folder)
   addDirectoryToZip(sourceDir, '')
   zipfile.end()
 
@@ -592,7 +593,6 @@ export async function createVersions(
 ): Promise<ZipPaths> {
   const zipPaths: ZipPaths = {}
 
-  // Clean up before building
   deleteIfExists('escrowed/')
   deleteIfExists('open-source/')
 

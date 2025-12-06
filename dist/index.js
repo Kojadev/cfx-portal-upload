@@ -294549,6 +294549,85 @@ async function run() {
                     core.info(`✅ Parsed openSource config: ${JSON.stringify(openSourceConfig)}`);
                 }
             }
+            // Parse HQ and LQ configs
+            const hqInput = core.getInput('hq');
+            const lqInput = core.getInput('lq');
+            let hqConfig = null;
+            let lqConfig = null;
+            if (hqInput) {
+                core.info('🔧 Parsing HQ config...');
+                try {
+                    hqConfig = JSON.parse(hqInput);
+                    core.info('✅ Parsed HQ as JSON');
+                }
+                catch {
+                    core.info('⚠️ JSON parse failed, trying YAML-like parsing...');
+                    const lines = hqInput.split('\n').filter(line => line.trim());
+                    hqConfig = {};
+                    for (const line of lines) {
+                        const match = line.match(/^\s*(\w+):\s*(.+)$/);
+                        if (match) {
+                            const [, key, value] = match;
+                            core.info(`  Found key: ${key}, value: ${value}`);
+                            if (key === 'escrow_ignore') {
+                                if (value.includes('[') && value.includes(']')) {
+                                    hqConfig[key] = value
+                                        .replace(/[\[\]'"`]/g, '')
+                                        .split(',')
+                                        .map(s => s.trim());
+                                }
+                                else {
+                                    hqConfig[key] = value
+                                        .replace(/[\"']/g, '')
+                                        .split(',')
+                                        .map(s => s.trim());
+                                }
+                            }
+                            else {
+                                hqConfig[key] = value.replace(/[\"']/g, '').trim();
+                            }
+                        }
+                    }
+                    core.info(`✅ Parsed HQ config: ${JSON.stringify(hqConfig)}`);
+                }
+            }
+            if (lqInput) {
+                core.info('🔧 Parsing LQ config...');
+                try {
+                    lqConfig = JSON.parse(lqInput);
+                    core.info('✅ Parsed LQ as JSON');
+                }
+                catch {
+                    core.info('⚠️ JSON parse failed, trying YAML-like parsing...');
+                    const lines = lqInput.split('\n').filter(line => line.trim());
+                    lqConfig = {};
+                    for (const line of lines) {
+                        const match = line.match(/^\s*(\w+):\s*(.+)$/);
+                        if (match) {
+                            const [, key, value] = match;
+                            core.info(`  Found key: ${key}, value: ${value}`);
+                            if (key === 'escrow_ignore') {
+                                if (value.includes('[') && value.includes(']')) {
+                                    lqConfig[key] = value
+                                        .replace(/[\[\]'"`]/g, '')
+                                        .split(',')
+                                        .map(s => s.trim());
+                                }
+                                else {
+                                    lqConfig[key] = value
+                                        .replace(/[\"']/g, '')
+                                        .split(',')
+                                        .map(s => s.trim());
+                                }
+                            }
+                            else {
+                                lqConfig[key] = value.replace(/[\"']/g, '').trim();
+                            }
+                        }
+                    }
+                    core.info(`✅ Parsed LQ config: ${JSON.stringify(lqConfig)}`);
+                }
+            }
             // Auto-detect what to create based on provided asset names or configs
             const shouldCreateEscrowed = createEscrowed ||
                 !!escrowedAssetName ||
@@ -294558,20 +294637,33 @@ async function run() {
                 !!openSourceAssetName ||
                 !!openSourceAssetId ||
                 !!openSourceConfig;
+            const shouldCreateHQ = !!hqConfig;
+            const shouldCreateLQ = !!lqConfig;
             const uploadTypes = [];
             if (shouldCreateEscrowed)
                 uploadTypes.push('escrowed');
             if (shouldCreateOpenSource)
                 uploadTypes.push('open-source');
+            if (shouldCreateHQ)
+                uploadTypes.push('HQ');
+            if (shouldCreateLQ)
+                uploadTypes.push('LQ');
             core.info(`🚀 Creating versions: ${uploadTypes.join(', ')}`);
             // Check if we should create multiple versions
-            if (shouldCreateEscrowed || shouldCreateOpenSource) {
+            if (shouldCreateEscrowed ||
+                shouldCreateOpenSource ||
+                shouldCreateHQ ||
+                shouldCreateLQ) {
                 core.info('🚀 Using multi-version upload logic');
                 const buildOptions = {
                     createEscrowed: shouldCreateEscrowed,
                     createOpenSource: shouldCreateOpenSource,
+                    createHq: shouldCreateHQ,
+                    createLq: shouldCreateLQ,
                     escrowedConfig: escrowedConfig || undefined,
                     openSourceConfig: openSourceConfig || undefined,
+                    hqConfig: hqConfig || undefined,
+                    lqConfig: lqConfig || undefined,
                     // Legacy support
                     escrowedAssetName: escrowedAssetName || undefined,
                     openSourceAssetName: openSourceAssetName || undefined,
@@ -294636,6 +294728,52 @@ async function run() {
                     }
                     core.info('Uploading open source version ...');
                     await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies);
+                }
+                // Upload HQ version
+                if (shouldCreateHQ && hqConfig) {
+                    core.info('🚀 Creating HQ version...');
+                    const hqBranch = hqConfig.branch || 'main';
+                    const hqIgnoreFiles = hqConfig.escrow_ignore || [];
+                    const hqZipPath = await (0, utils_1.createHQVersion)(hqConfig.asset_name || `${baseAssetName}-hq`, hqBranch, hqIgnoreFiles);
+                    let hqId;
+                    if (hqConfig.asset_id) {
+                        hqId = hqConfig.asset_id;
+                        core.info(`Using HQ asset_id: ${hqId}`);
+                    }
+                    else if (hqConfig.asset_name) {
+                        core.info(`Looking up HQ asset by name: ${hqConfig.asset_name}`);
+                        hqId = await (0, utils_1.resolveAssetId)(hqConfig.asset_name, cookies);
+                    }
+                    else {
+                        const fallbackName = `${baseAssetName}-hq`;
+                        core.info(`Using fallback HQ name: ${fallbackName}`);
+                        hqId = await (0, utils_1.resolveAssetId)(fallbackName, cookies);
+                    }
+                    core.info('Uploading HQ version ...');
+                    await uploadZip(hqZipPath, hqId, chunkSize, cookies);
+                }
+                // Upload LQ version
+                if (shouldCreateLQ && lqConfig) {
+                    core.info('🚀 Creating LQ version...');
+                    const lqBranch = lqConfig.branch || 'low-quality';
+                    const lqIgnoreFiles = lqConfig.escrow_ignore || [];
+                    const lqZipPath = await (0, utils_1.createLQVersion)(lqConfig.asset_name || `${baseAssetName}-lq`, lqBranch, lqIgnoreFiles);
+                    let lqId;
+                    if (lqConfig.asset_id) {
+                        lqId = lqConfig.asset_id;
+                        core.info(`Using LQ asset_id: ${lqId}`);
+                    }
+                    else if (lqConfig.asset_name) {
+                        core.info(`Looking up LQ asset by name: ${lqConfig.asset_name}`);
+                        lqId = await (0, utils_1.resolveAssetId)(lqConfig.asset_name, cookies);
+                    }
+                    else {
+                        const fallbackName = `${baseAssetName}-lq`;
+                        core.info(`Using fallback LQ name: ${fallbackName}`);
+                        lqId = await (0, utils_1.resolveAssetId)(fallbackName, cookies);
+                    }
+                    core.info('Uploading LQ version ...');
+                    await uploadZip(lqZipPath, lqId, chunkSize, cookies);
                 }
             }
             else {
@@ -294912,6 +295050,8 @@ exports.getUrl = getUrl;
 exports.getEnv = getEnv;
 exports.zipAsset = zipAsset;
 exports.deleteIfExists = deleteIfExists;
+exports.createHQVersion = createHQVersion;
+exports.createLQVersion = createLQVersion;
 exports.createEscrowedVersion = createEscrowedVersion;
 exports.createOpenSourceVersion = createOpenSourceVersion;
 exports.createVersions = createVersions;
@@ -295166,6 +295306,107 @@ async function buildWebAndDui() {
             });
         });
     }
+}
+/**
+ * Checkout a specific branch
+ * @param branchName The name of the branch to checkout
+ */
+async function checkoutBranch(branchName) {
+    const workspacePath = getEnv('GITHUB_WORKSPACE');
+    core.info(`🔀 Checking out branch: ${branchName}`);
+    const { spawn } = __nccwpck_require__(35317);
+    await new Promise((resolve, reject) => {
+        const gitProcess = spawn('git', ['fetch', 'origin', branchName], {
+            cwd: workspacePath,
+            stdio: 'inherit',
+            shell: true
+        });
+        gitProcess.on('close', (code) => {
+            if (code === 0) {
+                const checkoutProcess = spawn('git', ['checkout', branchName], {
+                    cwd: workspacePath,
+                    stdio: 'inherit',
+                    shell: true
+                });
+                checkoutProcess.on('close', (checkoutCode) => {
+                    if (checkoutCode === 0) {
+                        core.info(`✅ Checked out branch: ${branchName}`);
+                        resolve();
+                    }
+                    else {
+                        reject(new Error(`Git checkout failed with code ${checkoutCode}`));
+                    }
+                });
+            }
+            else {
+                reject(new Error(`Git fetch failed with code ${code}`));
+            }
+        });
+    });
+}
+/**
+ * Creates HQ version of the asset
+ * @param assetName The name of the asset
+ * @param branch The branch to checkout (defaults to 'main')
+ * @param ignoreFiles Optional array of files to ignore in escrow
+ * @returns Path to the HQ zip file
+ */
+async function createHQVersion(assetName, branch = 'main', ignoreFiles) {
+    core.info(`📦 Creating HQ version from branch: ${branch}`);
+    // Checkout the HQ branch
+    await checkoutBranch(branch);
+    // Build web and DUI
+    await buildWebAndDui();
+    const workspacePath = getEnv('GITHUB_WORKSPACE');
+    const workspaceName = path_2.default.basename(workspacePath);
+    const zipPath = path_2.default.join(workspacePath, `${workspaceName}.hq.zip`);
+    // Update fxmanifest metadata
+    const fxmanifestPath = path_2.default.join(workspacePath, 'fxmanifest.lua');
+    if (fs_1.default.existsSync(fxmanifestPath)) {
+        await updateFxManifestMetadata(fxmanifestPath, assetName);
+    }
+    // Create escrowed zip if ignoreFiles provided
+    if (ignoreFiles && ignoreFiles.length > 0) {
+        const escrowIgnorePath = path_2.default.join(workspacePath, 'escrow_ignore');
+        const escrowIgnoreContent = ignoreFiles.join('\n');
+        fs_1.default.writeFileSync(escrowIgnorePath, escrowIgnoreContent);
+        core.info(`✅ Created escrow_ignore file with ${ignoreFiles.length} entries`);
+    }
+    await zipDirectory(workspacePath, zipPath, workspaceName);
+    core.info(`✅ HQ version created: ${zipPath}`);
+    return zipPath;
+}
+/**
+ * Creates LQ version of the asset
+ * @param assetName The name of the asset
+ * @param branch The branch to checkout (defaults to 'low-quality')
+ * @param ignoreFiles Optional array of files to ignore in escrow
+ * @returns Path to the LQ zip file
+ */
+async function createLQVersion(assetName, branch = 'low-quality', ignoreFiles) {
+    core.info(`📦 Creating LQ version from branch: ${branch}`);
+    // Checkout the LQ branch
+    await checkoutBranch(branch);
+    // Build web and DUI
+    await buildWebAndDui();
+    const workspacePath = getEnv('GITHUB_WORKSPACE');
+    const workspaceName = path_2.default.basename(workspacePath);
+    const zipPath = path_2.default.join(workspacePath, `${workspaceName}.lq.zip`);
+    // Update fxmanifest metadata
+    const fxmanifestPath = path_2.default.join(workspacePath, 'fxmanifest.lua');
+    if (fs_1.default.existsSync(fxmanifestPath)) {
+        await updateFxManifestMetadata(fxmanifestPath, assetName);
+    }
+    // Create escrowed zip if ignoreFiles provided
+    if (ignoreFiles && ignoreFiles.length > 0) {
+        const escrowIgnorePath = path_2.default.join(workspacePath, 'escrow_ignore');
+        const escrowIgnoreContent = ignoreFiles.join('\n');
+        fs_1.default.writeFileSync(escrowIgnorePath, escrowIgnoreContent);
+        core.info(`✅ Created escrow_ignore file with ${ignoreFiles.length} entries`);
+    }
+    await zipDirectory(workspacePath, zipPath, workspaceName);
+    core.info(`✅ LQ version created: ${zipPath}`);
+    return zipPath;
 }
 /**
  * Creates escrowed version of the asset

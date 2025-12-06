@@ -90,18 +90,7 @@ export async function run(): Promise<void> {
     const makeZip = core.getInput('makeZip').toLowerCase() === 'true'
     const skipUpload = core.getInput('skipUpload').toLowerCase() === 'true'
 
-    // New inputs for CFX Portal upload options
-    const createEscrowed =
-      core.getInput('createEscrowed').toLowerCase() === 'true'
-    const createOpenSource =
-      core.getInput('createOpenSource').toLowerCase() === 'true'
-    const escrowedAssetName = core.getInput('escrowedAssetName')
-    const openSourceAssetName = core.getInput('openSourceAssetName')
-    const escrowedAssetId = core.getInput('escrowedAssetId')
-    const openSourceAssetId = core.getInput('openSourceAssetId')
-    const escrowedIgnoreFiles = core.getInput('escrowedIgnoreFiles')
-
-    // New structured inputs
+    // Version config inputs
     const escrowedInput = core.getInput('escrowed')
     const openSourceInput = core.getInput('openSource')
 
@@ -127,14 +116,19 @@ export async function run(): Promise<void> {
     await setForumCookie(browser, page)
 
     core.info('Navigating to CFX Portal...')
+    core.info(`Redirect URL: ${redirectUrl}`)
+
     await page.goto(redirectUrl, {
       waitUntil: 'domcontentloaded',
-      timeout: 60000
+      timeout: 90000
     })
 
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    await new Promise(resolve => setTimeout(resolve, 3000))
 
-    if (page.url().includes('portal.cfx.re')) {
+    const currentUrl = page.url()
+    core.info(`Current URL after navigation: ${currentUrl}`)
+
+    if (currentUrl.includes('portal.cfx.re')) {
       if (skipUpload) {
         core.info('Redirected to CFX Portal. Skipping upload ...')
         return
@@ -289,17 +283,9 @@ export async function run(): Promise<void> {
         }
       }
 
-      // Auto-detect what to create based on provided asset names or configs
-      const shouldCreateEscrowed =
-        createEscrowed ||
-        !!escrowedAssetName ||
-        !!escrowedAssetId ||
-        !!escrowedConfig
-      const shouldCreateOpenSource =
-        createOpenSource ||
-        !!openSourceAssetName ||
-        !!openSourceAssetId ||
-        !!openSourceConfig
+      // Determine which versions to create
+      const shouldCreateEscrowed = !!escrowedConfig
+      const shouldCreateOpenSource = !!openSourceConfig
       const shouldCreateHQ = !!hqConfig
       const shouldCreateLQ = !!lqConfig
 
@@ -326,15 +312,7 @@ export async function run(): Promise<void> {
           escrowedConfig: escrowedConfig || undefined,
           openSourceConfig: openSourceConfig || undefined,
           hqConfig: hqConfig || undefined,
-          lqConfig: lqConfig || undefined,
-          // Legacy support
-          escrowedAssetName: escrowedAssetName || undefined,
-          openSourceAssetName: openSourceAssetName || undefined,
-          escrowedAssetId: escrowedAssetId || undefined,
-          openSourceAssetId: openSourceAssetId || undefined,
-          escrowedIgnoreFiles: escrowedIgnoreFiles
-            ? escrowedIgnoreFiles.split(',').map(f => f.trim())
-            : undefined
+          lqConfig: lqConfig || undefined
         }
 
         const baseAssetName = assetName || basename(getEnv('GITHUB_WORKSPACE'))
@@ -355,20 +333,10 @@ export async function run(): Promise<void> {
               escrowedConfig.asset_name,
               cookies
             )
-          } else if (escrowedAssetId) {
-            escrowedId = escrowedAssetId
-            core.info(`Using legacy escrowedAssetId: ${escrowedId}`)
-          } else if (escrowedAssetName) {
-            core.info(
-              `Looking up legacy escrowedAssetName: ${escrowedAssetName}`
-            )
-            escrowedId = await resolveAssetId(escrowedAssetName, cookies)
           } else {
-            const fallbackName = `${baseAssetName}-escrowed`
-            core.info(
-              `No escrowed config found, using fallback name: ${fallbackName}`
+            throw new Error(
+              'Escrowed config must include asset_id or asset_name'
             )
-            escrowedId = await resolveAssetId(fallbackName, cookies)
           }
 
           core.info('Uploading escrowed version ...')
@@ -390,20 +358,10 @@ export async function run(): Promise<void> {
               openSourceConfig.asset_name,
               cookies
             )
-          } else if (openSourceAssetId) {
-            openSourceId = openSourceAssetId
-            core.info(`Using legacy openSourceAssetId: ${openSourceId}`)
-          } else if (openSourceAssetName) {
-            core.info(
-              `Looking up legacy openSourceAssetName: ${openSourceAssetName}`
-            )
-            openSourceId = await resolveAssetId(openSourceAssetName, cookies)
           } else {
-            const fallbackName = `${baseAssetName}-source`
-            core.info(
-              `No openSource config found, using fallback name: ${fallbackName}`
+            throw new Error(
+              'OpenSource config must include asset_id or asset_name'
             )
-            openSourceId = await resolveAssetId(fallbackName, cookies)
           }
 
           core.info('Uploading open source version ...')
@@ -482,8 +440,12 @@ export async function run(): Promise<void> {
         await uploadZip(zipPath, assetId, chunkSize, cookies)
       }
     } else {
+      core.error(`❌ Failed to reach CFX Portal`)
+      core.error(`Current URL: ${currentUrl}`)
+      core.error(`Expected URL to contain: portal.cfx.re`)
+      core.error(`Redirect URL was: ${redirectUrl}`)
       throw new Error(
-        'Redirect failed. Make sure the provided Cookie is valid.'
+        `Redirect failed. Current URL: ${currentUrl}. Make sure the provided Cookie is valid and not expired.`
       )
     }
   } catch (error) {

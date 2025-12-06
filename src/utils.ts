@@ -320,6 +320,44 @@ async function checkoutBranch(branchName: string): Promise<void> {
 
   const { spawn } = require('child_process')
 
+  // Reset any local changes first
+  await new Promise<void>((resolve, reject) => {
+    const resetProcess = spawn('git', ['reset', '--hard'], {
+      cwd: workspacePath,
+      stdio: 'inherit',
+      shell: true
+    })
+
+    resetProcess.on('close', (code: number | null) => {
+      if (code === 0) {
+        core.info('✅ Reset local changes')
+        resolve()
+      } else {
+        reject(new Error(`Git reset failed with code ${code}`))
+      }
+    })
+  })
+
+  // Clean untracked files
+  await new Promise<void>((resolve, reject) => {
+    const cleanProcess = spawn('git', ['clean', '-fd'], {
+      cwd: workspacePath,
+      stdio: 'inherit',
+      shell: true
+    })
+
+    cleanProcess.on('close', (code: number | null) => {
+      if (code === 0) {
+        core.info('✅ Cleaned untracked files')
+        resolve()
+      } else {
+        // Clean can fail if there's nothing to clean, that's ok
+        resolve()
+      }
+    })
+  })
+
+  // Fetch the branch
   await new Promise<void>((resolve, reject) => {
     const gitProcess = spawn('git', ['fetch', 'origin', branchName], {
       cwd: workspacePath,
@@ -367,28 +405,18 @@ export async function createHQVersion(
   // Checkout the HQ branch
   await checkoutBranch(branch)
 
-  // Build web and DUI
-  await buildWebAndDui()
-
   const workspacePath = getEnv('GITHUB_WORKSPACE')
   const workspaceName = path.basename(workspacePath)
   const zipPath = path.join(workspacePath, `${workspaceName}.hq.zip`)
 
-  // Update fxmanifest metadata
-  const fxmanifestPath = path.join(workspacePath, 'fxmanifest.lua')
-  if (fs.existsSync(fxmanifestPath)) {
-    await updateFxManifestMetadata(fxmanifestPath, assetName)
-  }
-
-  // Create escrowed zip if ignoreFiles provided
-  if (ignoreFiles && ignoreFiles.length > 0) {
-    const escrowIgnorePath = path.join(workspacePath, 'escrow_ignore')
-    const escrowIgnoreContent = ignoreFiles.join('\n')
-    fs.writeFileSync(escrowIgnorePath, escrowIgnoreContent)
-    core.info(
-      `✅ Created escrow_ignore file with ${ignoreFiles.length} entries`
-    )
-  }
+  // Clean up unnecessary files before zipping
+  core.info('🧹 Cleaning up Git and cache files...')
+  deleteIfExists('.git')
+  deleteIfExists('.github')
+  deleteIfExists('.vscode')
+  deleteIfExists('node_modules')
+  deleteIfExists('.gitignore')
+  deleteIfExists('.gitattributes')
 
   await zipDirectory(workspacePath, zipPath, workspaceName)
   core.info(`✅ HQ version created: ${zipPath}`)
@@ -413,28 +441,18 @@ export async function createLQVersion(
   // Checkout the LQ branch
   await checkoutBranch(branch)
 
-  // Build web and DUI
-  await buildWebAndDui()
-
   const workspacePath = getEnv('GITHUB_WORKSPACE')
   const workspaceName = path.basename(workspacePath)
   const zipPath = path.join(workspacePath, `${workspaceName}.lq.zip`)
 
-  // Update fxmanifest metadata
-  const fxmanifestPath = path.join(workspacePath, 'fxmanifest.lua')
-  if (fs.existsSync(fxmanifestPath)) {
-    await updateFxManifestMetadata(fxmanifestPath, assetName)
-  }
-
-  // Create escrowed zip if ignoreFiles provided
-  if (ignoreFiles && ignoreFiles.length > 0) {
-    const escrowIgnorePath = path.join(workspacePath, 'escrow_ignore')
-    const escrowIgnoreContent = ignoreFiles.join('\n')
-    fs.writeFileSync(escrowIgnorePath, escrowIgnoreContent)
-    core.info(
-      `✅ Created escrow_ignore file with ${ignoreFiles.length} entries`
-    )
-  }
+  // Clean up unnecessary files before zipping
+  core.info('🧹 Cleaning up Git and cache files...')
+  deleteIfExists('.git')
+  deleteIfExists('.github')
+  deleteIfExists('.vscode')
+  deleteIfExists('node_modules')
+  deleteIfExists('.gitignore')
+  deleteIfExists('.gitattributes')
 
   await zipDirectory(workspacePath, zipPath, workspaceName)
   core.info(`✅ LQ version created: ${zipPath}`)
@@ -729,12 +747,9 @@ export async function createVersions(
   deleteIfExists('open-source/')
 
   if (options.createEscrowed) {
-    const escrowIgnoreFiles =
-      options.escrowedConfig?.escrow_ignore || options.escrowedIgnoreFiles
+    const escrowIgnoreFiles = options.escrowedConfig?.escrow_ignore
     const escrowedName =
-      options.escrowedConfig?.asset_name ||
-      options.escrowedAssetName ||
-      `${assetName}-escrowed`
+      options.escrowedConfig?.asset_name || `${assetName}-escrowed`
 
     zipPaths.escrowed = await createEscrowedVersion(
       escrowedName,
@@ -743,9 +758,9 @@ export async function createVersions(
   }
 
   if (options.createOpenSource) {
-    zipPaths.openSource = await createOpenSourceVersion(
-      options.openSourceAssetName || `${assetName}-source`
-    )
+    const openSourceName =
+      options.openSourceConfig?.asset_name || `${assetName}-source`
+    zipPaths.openSource = await createOpenSourceVersion(openSourceName)
   }
 
   return zipPaths

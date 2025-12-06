@@ -40,16 +40,6 @@ export interface BuildOptions {
   openSourceConfig?: AssetConfig
   hqConfig?: AssetConfig
   lqConfig?: AssetConfig
-  // Legacy support
-  escrowedAssetName?: string
-  openSourceAssetName?: string
-  escrowedAssetId?: string
-  openSourceAssetId?: string
-  escrowedIgnoreFiles?: string[]
-}
-
-export interface EscrowIgnoreConfig {
-  patterns: string[]
 }
 
 export interface ZipPaths {

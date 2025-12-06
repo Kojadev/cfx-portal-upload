@@ -10,79 +10,52 @@ branding:
 
 inputs:
   cookie:
-    description: 'Your Forum Account Cookie'
+    description: 'Your Forum Account Cookie (_t cookie from forum.cfx.re)'
     required: true
-  makeZip:
-    description:
-      'Automatically zip the full repository to upload it (true or false)'
-    required: false
-    default: true
-  assetName:
-    description: 'The asset name to re-upload'
-    required: false
-  maxRetries:
-    description: 'The maximum number of retries'
-    required: false
-    default: 3
-  zipPath:
-    description: 'The path to the zip file to upload'
-    required: false
-  assetId:
-    description: 'The asset id to re-upload'
-    required: false
-  skipUpload:
-    description: 'Skip the upload and only go through the login process'
-    required: false
   chunkSize:
-    description: 'The chunk size to split the file into'
+    description:
+      'Upload chunk size in bytes (default: 2MB, recommended: 5-20MB for large
+      files)'
     required: false
     default: 2097152
-  createEscrowed:
-    description: 'Create and upload escrowed version (true or false)'
+  maxRetries:
+    description: 'Maximum number of login retries'
+    required: false
+    default: 3
+  skipUpload:
+    description: 'Skip upload and only test authentication'
     required: false
     default: false
-  createOpenSource:
-    description: 'Create and upload open source version (true or false)'
+  # Simple single asset upload
+  assetId:
+    description: 'Asset ID for simple single upload'
     required: false
-    default: false
-  escrowedAssetName:
-    description:
-      'The name of the escrowed asset (defaults to [assetName]-escrowed)'
+  assetName:
+    description: 'Asset name for simple single upload (will lookup ID)'
     required: false
-  openSourceAssetName:
-    description:
-      'The name of the open source asset (defaults to [assetName]-source)'
+  makeZip:
+    description: 'Automatically create ZIP from repository'
     required: false
-  escrowedAssetId:
-    description: 'The asset ID for escrowed version (if known)'
+    default: true
+  zipPath:
+    description: 'Path to pre-made ZIP file'
     required: false
-  openSourceAssetId:
-    description: 'The asset ID for open source version (if known)'
-    required: false
-  escrowedIgnoreFiles:
-    description:
-      'Comma-separated list of files to ignore in escrowed version (e.g.
-      "init.lua,shared/config.lua")'
-    required: false
-    default: 'init.lua,shared/config.lua,shared/utils.lua,shared/startheist.lua'
+  # Script versions (escrowed + open source)
   escrowed:
     description:
-      'Escrowed version configuration (YAML object with asset_id, asset_name,
-      escrow_ignore)'
+      'Escrowed version config (YAML: asset_id, asset_name, escrow_ignore)'
     required: false
   openSource:
-    description:
-      'Open source version configuration (YAML object with asset_id, asset_name)'
+    description: 'Open source version config (YAML: asset_id, asset_name)'
     required: false
+  # Asset versions (HQ + LQ from different branches)
   hq:
     description:
-      'High quality version configuration (YAML object with asset_id,
-      asset_name, branch)'
+      'High quality version config (YAML: asset_id, asset_name, branch)'
     required: false
   lq:
     description:
-      'Low quality version configuration (YAML object with asset_id, asset_name,
-      branch)'
+      'Low quality version config (YAML: asset_id, asset_name, branch)'
     required: false
 
 runs:

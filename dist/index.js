@@ -294447,15 +294447,7 @@ async function run() {
         let zipPath = core.getInput('zipPath');
         const makeZip = core.getInput('makeZip').toLowerCase() === 'true';
         const skipUpload = core.getInput('skipUpload').toLowerCase() === 'true';
-        // New inputs for CFX Portal upload options
-        const createEscrowed = core.getInput('createEscrowed').toLowerCase() === 'true';
-        const createOpenSource = core.getInput('createOpenSource').toLowerCase() === 'true';
-        const escrowedAssetName = core.getInput('escrowedAssetName');
-        const openSourceAssetName = core.getInput('openSourceAssetName');
-        const escrowedAssetId = core.getInput('escrowedAssetId');
-        const openSourceAssetId = core.getInput('openSourceAssetId');
-        const escrowedIgnoreFiles = core.getInput('escrowedIgnoreFiles');
-        // New structured inputs
+        // Version config inputs
         const escrowedInput = core.getInput('escrowed');
         const openSourceInput = core.getInput('openSource');
         const chunkSize = parseInt(core.getInput('chunkSize'));
@@ -294475,12 +294467,15 @@ async function run() {
         const redirectUrl = await getRedirectUrl(page, maxRetries);
         await setForumCookie(browser, page);
         core.info('Navigating to CFX Portal...');
+        core.info(`Redirect URL: ${redirectUrl}`);
         await page.goto(redirectUrl, {
             waitUntil: 'domcontentloaded',
-            timeout: 60000
+            timeout: 90000
         });
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        if (page.url().includes('portal.cfx.re')) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const currentUrl = page.url();
+        core.info(`Current URL after navigation: ${currentUrl}`);
+        if (currentUrl.includes('portal.cfx.re')) {
             if (skipUpload) {
                 core.info('Redirected to CFX Portal. Skipping upload ...');
                 return;
@@ -294631,15 +294626,9 @@ async function run() {
                     core.info(`✅ Parsed LQ config: ${JSON.stringify(lqConfig)}`);
                 }
             }
-            // Auto-detect what to create based on provided asset names or configs
-            const shouldCreateEscrowed = createEscrowed ||
-                !!escrowedAssetName ||
-                !!escrowedAssetId ||
-                !!escrowedConfig;
-            const shouldCreateOpenSource = createOpenSource ||
-                !!openSourceAssetName ||
-                !!openSourceAssetId ||
-                !!openSourceConfig;
+            // Determine which versions to create
+            const shouldCreateEscrowed = !!escrowedConfig;
+            const shouldCreateOpenSource = !!openSourceConfig;
             const shouldCreateHQ = !!hqConfig;
             const shouldCreateLQ = !!lqConfig;
             const uploadTypes = [];
@@ -294666,15 +294655,7 @@ async function run() {
                     escrowedConfig: escrowedConfig || undefined,
                     openSourceConfig: openSourceConfig || undefined,
                     hqConfig: hqConfig || undefined,
-                    lqConfig: lqConfig || undefined,
-                    // Legacy support
-                    escrowedAssetName: escrowedAssetName || undefined,
-                    openSourceAssetName: openSourceAssetName || undefined,
-                    escrowedAssetId: escrowedAssetId || undefined,
-                    openSourceAssetId: openSourceAssetId || undefined,
-                    escrowedIgnoreFiles: escrowedIgnoreFiles
-                        ? escrowedIgnoreFiles.split(',').map(f => f.trim())
-                        : undefined
+                    lqConfig: lqConfig || undefined
                 };
                 const baseAssetName = assetName || (0, path_1.basename)((0, utils_1.getEnv)('GITHUB_WORKSPACE'));
                 const zipPaths = await (0, utils_1.createVersions)(buildOptions, baseAssetName);
@@ -294689,18 +294670,8 @@ async function run() {
                         core.info(`Looking up escrowed asset by name: ${escrowedConfig.asset_name}`);
                         escrowedId = await (0, utils_1.resolveAssetId)(escrowedConfig.asset_name, cookies);
                     }
-                    else if (escrowedAssetId) {
-                        escrowedId = escrowedAssetId;
-                        core.info(`Using legacy escrowedAssetId: ${escrowedId}`);
-                    }
-                    else if (escrowedAssetName) {
-                        core.info(`Looking up legacy escrowedAssetName: ${escrowedAssetName}`);
-                        escrowedId = await (0, utils_1.resolveAssetId)(escrowedAssetName, cookies);
-                    }
                     else {
-                        const fallbackName = `${baseAssetName}-escrowed`;
-                        core.info(`No escrowed config found, using fallback name: ${fallbackName}`);
-                        escrowedId = await (0, utils_1.resolveAssetId)(fallbackName, cookies);
+                        throw new Error('Escrowed config must include asset_id or asset_name');
                     }
                     core.info('Uploading escrowed version ...');
                     await uploadZip(zipPaths.escrowed, escrowedId, chunkSize, cookies);
@@ -294716,18 +294687,8 @@ async function run() {
                         core.info(`Looking up openSource asset by name: ${openSourceConfig.asset_name}`);
                         openSourceId = await (0, utils_1.resolveAssetId)(openSourceConfig.asset_name, cookies);
                     }
-                    else if (openSourceAssetId) {
-                        openSourceId = openSourceAssetId;
-                        core.info(`Using legacy openSourceAssetId: ${openSourceId}`);
-                    }
-                    else if (openSourceAssetName) {
-                        core.info(`Looking up legacy openSourceAssetName: ${openSourceAssetName}`);
-                        openSourceId = await (0, utils_1.resolveAssetId)(openSourceAssetName, cookies);
-                    }
                     else {
-                        const fallbackName = `${baseAssetName}-source`;
-                        core.info(`No openSource config found, using fallback name: ${fallbackName}`);
-                        openSourceId = await (0, utils_1.resolveAssetId)(fallbackName, cookies);
+                        throw new Error('OpenSource config must include asset_id or asset_name');
                     }
                     core.info('Uploading open source version ...');
                     await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies);
@@ -294793,7 +294754,11 @@ async function run() {
             }
         }
         else {
-            throw new Error('Redirect failed. Make sure the provided Cookie is valid.');
+            core.error(`❌ Failed to reach CFX Portal`);
+            core.error(`Current URL: ${currentUrl}`);
+            core.error(`Expected URL to contain: portal.cfx.re`);
+            core.error(`Redirect URL was: ${redirectUrl}`);
+            throw new Error(`Redirect failed. Current URL: ${currentUrl}. Make sure the provided Cookie is valid and not expired.`);
         }
     }
     catch (error) {
@@ -295322,6 +295287,42 @@ async function checkoutBranch(branchName) {
     const workspacePath = getEnv('GITHUB_WORKSPACE');
     core.info(`🔀 Checking out branch: ${branchName}`);
     const { spawn } = __nccwpck_require__(35317);
+    // Reset any local changes first
+    await new Promise((resolve, reject) => {
+        const resetProcess = spawn('git', ['reset', '--hard'], {
+            cwd: workspacePath,
+            stdio: 'inherit',
+            shell: true
+        });
+        resetProcess.on('close', (code) => {
+            if (code === 0) {
+                core.info('✅ Reset local changes');
+                resolve();
+            }
+            else {
+                reject(new Error(`Git reset failed with code ${code}`));
+            }
+        });
+    });
+    // Clean untracked files
+    await new Promise((resolve, reject) => {
+        const cleanProcess = spawn('git', ['clean', '-fd'], {
+            cwd: workspacePath,
+            stdio: 'inherit',
+            shell: true
+        });
+        cleanProcess.on('close', (code) => {
+            if (code === 0) {
+                core.info('✅ Cleaned untracked files');
+                resolve();
+            }
+            else {
+                // Clean can fail if there's nothing to clean, that's ok
+                resolve();
+            }
+        });
+    });
+    // Fetch the branch
     await new Promise((resolve, reject) => {
         const gitProcess = spawn('git', ['fetch', 'origin', branchName], {
             cwd: workspacePath,
@@ -295362,23 +295363,17 @@ async function createHQVersion(assetName, branch = 'main', ignoreFiles) {
     core.info(`📦 Creating HQ version from branch: ${branch}`);
     // Checkout the HQ branch
     await checkoutBranch(branch);
-    // Build web and DUI
-    await buildWebAndDui();
     const workspacePath = getEnv('GITHUB_WORKSPACE');
     const workspaceName = path_2.default.basename(workspacePath);
     const zipPath = path_2.default.join(workspacePath, `${workspaceName}.hq.zip`);
-    // Update fxmanifest metadata
-    const fxmanifestPath = path_2.default.join(workspacePath, 'fxmanifest.lua');
-    if (fs_1.default.existsSync(fxmanifestPath)) {
-        await updateFxManifestMetadata(fxmanifestPath, assetName);
-    }
-    // Create escrowed zip if ignoreFiles provided
-    if (ignoreFiles && ignoreFiles.length > 0) {
-        const escrowIgnorePath = path_2.default.join(workspacePath, 'escrow_ignore');
-        const escrowIgnoreContent = ignoreFiles.join('\n');
-        fs_1.default.writeFileSync(escrowIgnorePath, escrowIgnoreContent);
-        core.info(`✅ Created escrow_ignore file with ${ignoreFiles.length} entries`);
-    }
+    // Clean up unnecessary files before zipping
+    core.info('🧹 Cleaning up Git and cache files...');
+    deleteIfExists('.git');
+    deleteIfExists('.github');
+    deleteIfExists('.vscode');
+    deleteIfExists('node_modules');
+    deleteIfExists('.gitignore');
+    deleteIfExists('.gitattributes');
     await zipDirectory(workspacePath, zipPath, workspaceName);
     core.info(`✅ HQ version created: ${zipPath}`);
     return zipPath;
@@ -295394,23 +295389,17 @@ async function createLQVersion(assetName, branch = 'low-quality', ignoreFiles) {
     core.info(`📦 Creating LQ version from branch: ${branch}`);
     // Checkout the LQ branch
     await checkoutBranch(branch);
-    // Build web and DUI
-    await buildWebAndDui();
     const workspacePath = getEnv('GITHUB_WORKSPACE');
     const workspaceName = path_2.default.basename(workspacePath);
     const zipPath = path_2.default.join(workspacePath, `${workspaceName}.lq.zip`);
-    // Update fxmanifest metadata
-    const fxmanifestPath = path_2.default.join(workspacePath, 'fxmanifest.lua');
-    if (fs_1.default.existsSync(fxmanifestPath)) {
-        await updateFxManifestMetadata(fxmanifestPath, assetName);
-    }
-    // Create escrowed zip if ignoreFiles provided
-    if (ignoreFiles && ignoreFiles.length > 0) {
-        const escrowIgnorePath = path_2.default.join(workspacePath, 'escrow_ignore');
-        const escrowIgnoreContent = ignoreFiles.join('\n');
-        fs_1.default.writeFileSync(escrowIgnorePath, escrowIgnoreContent);
-        core.info(`✅ Created escrow_ignore file with ${ignoreFiles.length} entries`);
-    }
+    // Clean up unnecessary files before zipping
+    core.info('🧹 Cleaning up Git and cache files...');
+    deleteIfExists('.git');
+    deleteIfExists('.github');
+    deleteIfExists('.vscode');
+    deleteIfExists('node_modules');
+    deleteIfExists('.gitignore');
+    deleteIfExists('.gitattributes');
     await zipDirectory(workspacePath, zipPath, workspaceName);
     core.info(`✅ LQ version created: ${zipPath}`);
     return zipPath;
@@ -295634,14 +295623,13 @@ async function createVersions(options, assetName) {
     deleteIfExists('escrowed/');
     deleteIfExists('open-source/');
     if (options.createEscrowed) {
-        const escrowIgnoreFiles = options.escrowedConfig?.escrow_ignore || options.escrowedIgnoreFiles;
-        const escrowedName = options.escrowedConfig?.asset_name ||
-            options.escrowedAssetName ||
-            `${assetName}-escrowed`;
+        const escrowIgnoreFiles = options.escrowedConfig?.escrow_ignore;
+        const escrowedName = options.escrowedConfig?.asset_name || `${assetName}-escrowed`;
         zipPaths.escrowed = await createEscrowedVersion(escrowedName, escrowIgnoreFiles);
     }
     if (options.createOpenSource) {
-        zipPaths.openSource = await createOpenSourceVersion(options.openSourceAssetName || `${assetName}-source`);
+        const openSourceName = options.openSourceConfig?.asset_name || `${assetName}-source`;
+        zipPaths.openSource = await createOpenSourceVersion(openSourceName);
     }
     return zipPaths;
 }

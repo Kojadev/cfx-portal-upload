@@ -294474,9 +294474,12 @@ async function run() {
         }
         const redirectUrl = await getRedirectUrl(page, maxRetries);
         await setForumCookie(browser, page);
+        core.info('Navigating to CFX Portal...');
         await page.goto(redirectUrl, {
-            waitUntil: 'networkidle0'
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
         });
+        await new Promise(resolve => setTimeout(resolve, 2000));
         if (page.url().includes('portal.cfx.re')) {
             if (skipUpload) {
                 core.info('Redirected to CFX Portal. Skipping upload ...');
@@ -294818,7 +294821,8 @@ async function getRedirectUrl(page, maxRetries) {
         try {
             core.info('Navigating to SSO URL ...');
             await page.goto((0, utils_1.getUrl)('SSO'), {
-                waitUntil: 'networkidle0'
+                waitUntil: 'domcontentloaded',
+                timeout: 60000
             });
             core.info('Navigated to SSO URL. Parsing response body ...');
             const responseBody = await page.evaluate(() => JSON.parse(document.body.innerText));
@@ -294826,7 +294830,10 @@ async function getRedirectUrl(page, maxRetries) {
             redirectUrl = responseBody.url;
             core.info('Redirected to Forum Origin ...');
             const forumUrl = new URL(redirectUrl).origin;
-            await page.goto(forumUrl);
+            await page.goto(forumUrl, {
+                waitUntil: 'domcontentloaded',
+                timeout: 60000
+            });
             loaded = true;
         }
         catch {

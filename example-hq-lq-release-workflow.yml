@@ -19,6 +19,7 @@ jobs:
         uses: Kojadev/cfx-portal-upload@main
         with:
           cookie: ${{ secrets.FORUM_COOKIE }}
+          chunkSize: 20971520 # 20MB chunks - optymalne dla Hetzner
           hq: |
             asset_id: "123456"
             asset_name: "lspd-eup-pack-hq"

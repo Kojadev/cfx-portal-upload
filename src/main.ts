@@ -126,9 +126,13 @@ export async function run(): Promise<void> {
     const redirectUrl = await getRedirectUrl(page, maxRetries)
     await setForumCookie(browser, page)
 
+    core.info('Navigating to CFX Portal...')
     await page.goto(redirectUrl, {
-      waitUntil: 'networkidle0'
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
     })
+
+    await new Promise(resolve => setTimeout(resolve, 2000))
 
     if (page.url().includes('portal.cfx.re')) {
       if (skipUpload) {
@@ -509,7 +513,8 @@ async function getRedirectUrl(page: Page, maxRetries: number): Promise<string> {
       core.info('Navigating to SSO URL ...')
 
       await page.goto(getUrl('SSO'), {
-        waitUntil: 'networkidle0'
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
       })
 
       core.info('Navigated to SSO URL. Parsing response body ...')
@@ -525,7 +530,10 @@ async function getRedirectUrl(page: Page, maxRetries: number): Promise<string> {
       core.info('Redirected to Forum Origin ...')
 
       const forumUrl = new URL(redirectUrl).origin
-      await page.goto(forumUrl)
+      await page.goto(forumUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+      })
 
       loaded = true
     } catch {

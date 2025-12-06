@@ -407,7 +407,8 @@ export async function createHQVersion(
 
   const workspacePath = getEnv('GITHUB_WORKSPACE')
   const workspaceName = path.basename(workspacePath)
-  const zipPath = path.join(workspacePath, `${workspaceName}.hq.zip`)
+  // Save ZIP outside workspace to prevent git clean from removing it
+  const zipPath = path.join(workspacePath, '..', `${workspaceName}.hq.zip`)
 
   // Exclude Git and unnecessary files from ZIP
   const excludePaths = [
@@ -443,7 +444,8 @@ export async function createLQVersion(
 
   const workspacePath = getEnv('GITHUB_WORKSPACE')
   const workspaceName = path.basename(workspacePath)
-  const zipPath = path.join(workspacePath, `${workspaceName}.lq.zip`)
+  // Save ZIP outside workspace to prevent git clean from removing it
+  const zipPath = path.join(workspacePath, '..', `${workspaceName}.lq.zip`)
 
   // Exclude Git and unnecessary files from ZIP
   const excludePaths = [

@@ -409,16 +409,16 @@ export async function createHQVersion(
   const workspaceName = path.basename(workspacePath)
   const zipPath = path.join(workspacePath, `${workspaceName}.hq.zip`)
 
-  // Clean up unnecessary files before zipping
-  core.info('🧹 Cleaning up Git and cache files...')
-  deleteIfExists('.git')
-  deleteIfExists('.github')
-  deleteIfExists('.vscode')
-  deleteIfExists('node_modules')
-  deleteIfExists('.gitignore')
-  deleteIfExists('.gitattributes')
-
-  await zipDirectory(workspacePath, zipPath, workspaceName)
+  // Exclude Git and unnecessary files from ZIP
+  const excludePaths = [
+    '.git',
+    '.github',
+    '.vscode',
+    'node_modules',
+    '.gitignore',
+    '.gitattributes'
+  ]
+  await zipDirectory(workspacePath, zipPath, workspaceName, excludePaths)
   core.info(`✅ HQ version created: ${zipPath}`)
 
   return zipPath
@@ -445,16 +445,16 @@ export async function createLQVersion(
   const workspaceName = path.basename(workspacePath)
   const zipPath = path.join(workspacePath, `${workspaceName}.lq.zip`)
 
-  // Clean up unnecessary files before zipping
-  core.info('🧹 Cleaning up Git and cache files...')
-  deleteIfExists('.git')
-  deleteIfExists('.github')
-  deleteIfExists('.vscode')
-  deleteIfExists('node_modules')
-  deleteIfExists('.gitignore')
-  deleteIfExists('.gitattributes')
-
-  await zipDirectory(workspacePath, zipPath, workspaceName)
+  // Exclude Git and unnecessary files from ZIP
+  const excludePaths = [
+    '.git',
+    '.github',
+    '.vscode',
+    'node_modules',
+    '.gitignore',
+    '.gitattributes'
+  ]
+  await zipDirectory(workspacePath, zipPath, workspaceName, excludePaths)
   core.info(`✅ LQ version created: ${zipPath}`)
 
   return zipPath
@@ -698,15 +698,34 @@ function copyRecursively(
 async function zipDirectory(
   sourceDir: string,
   zipPath: string,
-  rootFolderName: string
+  rootFolderName: string,
+  excludePaths: string[] = []
 ): Promise<string> {
   const zipfile = new yazl.ZipFile()
   const outputZipPath = path.resolve(zipPath)
+
+  // Normalize exclude paths for comparison
+  const normalizedExcludes = excludePaths.map(p => path.normalize(p))
 
   function addDirectoryToZip(dir: string, zipPath: string): void {
     const entries = fs.readdirSync(dir, { withFileTypes: true })
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name)
+      const relativePath = path.relative(sourceDir, fullPath)
+
+      // Check if this path should be excluded
+      const shouldExclude = normalizedExcludes.some(exclude => {
+        const normalized = path.normalize(relativePath)
+        return (
+          normalized === exclude || normalized.startsWith(exclude + path.sep)
+        )
+      })
+
+      if (shouldExclude) {
+        core.debug(`Excluding from ZIP: ${relativePath}`)
+        continue
+      }
+
       const entryZipPath = path.join(zipPath, entry.name)
       if (entry.isDirectory()) {
         addDirectoryToZip(fullPath, entryZipPath)

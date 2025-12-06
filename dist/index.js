@@ -295371,15 +295371,16 @@ async function createHQVersion(assetName, branch = 'main', ignoreFiles) {
     const workspacePath = getEnv('GITHUB_WORKSPACE');
     const workspaceName = path_2.default.basename(workspacePath);
     const zipPath = path_2.default.join(workspacePath, `${workspaceName}.hq.zip`);
-    // Clean up unnecessary files before zipping
-    core.info('🧹 Cleaning up Git and cache files...');
-    deleteIfExists('.git');
-    deleteIfExists('.github');
-    deleteIfExists('.vscode');
-    deleteIfExists('node_modules');
-    deleteIfExists('.gitignore');
-    deleteIfExists('.gitattributes');
-    await zipDirectory(workspacePath, zipPath, workspaceName);
+    // Exclude Git and unnecessary files from ZIP
+    const excludePaths = [
+        '.git',
+        '.github',
+        '.vscode',
+        'node_modules',
+        '.gitignore',
+        '.gitattributes'
+    ];
+    await zipDirectory(workspacePath, zipPath, workspaceName, excludePaths);
     core.info(`✅ HQ version created: ${zipPath}`);
     return zipPath;
 }
@@ -295397,15 +295398,16 @@ async function createLQVersion(assetName, branch = 'low-quality', ignoreFiles) {
     const workspacePath = getEnv('GITHUB_WORKSPACE');
     const workspaceName = path_2.default.basename(workspacePath);
     const zipPath = path_2.default.join(workspacePath, `${workspaceName}.lq.zip`);
-    // Clean up unnecessary files before zipping
-    core.info('🧹 Cleaning up Git and cache files...');
-    deleteIfExists('.git');
-    deleteIfExists('.github');
-    deleteIfExists('.vscode');
-    deleteIfExists('node_modules');
-    deleteIfExists('.gitignore');
-    deleteIfExists('.gitattributes');
-    await zipDirectory(workspacePath, zipPath, workspaceName);
+    // Exclude Git and unnecessary files from ZIP
+    const excludePaths = [
+        '.git',
+        '.github',
+        '.vscode',
+        'node_modules',
+        '.gitignore',
+        '.gitattributes'
+    ];
+    await zipDirectory(workspacePath, zipPath, workspaceName, excludePaths);
     core.info(`✅ LQ version created: ${zipPath}`);
     return zipPath;
 }
@@ -295588,13 +295590,25 @@ function copyRecursively(src, dest, excludeDirs = []) {
  * @param rootFolderName Name of the root folder in the zip
  * @returns Promise resolving to the absolute path of the created zip file
  */
-async function zipDirectory(sourceDir, zipPath, rootFolderName) {
+async function zipDirectory(sourceDir, zipPath, rootFolderName, excludePaths = []) {
     const zipfile = new yazl_1.default.ZipFile();
     const outputZipPath = path_2.default.resolve(zipPath);
+    // Normalize exclude paths for comparison
+    const normalizedExcludes = excludePaths.map(p => path_2.default.normalize(p));
     function addDirectoryToZip(dir, zipPath) {
         const entries = fs_1.default.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
             const fullPath = path_2.default.join(dir, entry.name);
+            const relativePath = path_2.default.relative(sourceDir, fullPath);
+            // Check if this path should be excluded
+            const shouldExclude = normalizedExcludes.some(exclude => {
+                const normalized = path_2.default.normalize(relativePath);
+                return (normalized === exclude || normalized.startsWith(exclude + path_2.default.sep));
+            });
+            if (shouldExclude) {
+                core.debug(`Excluding from ZIP: ${relativePath}`);
+                continue;
+            }
             const entryZipPath = path_2.default.join(zipPath, entry.name);
             if (entry.isDirectory()) {
                 addDirectoryToZip(fullPath, entryZipPath);

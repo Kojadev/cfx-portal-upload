@@ -368,19 +368,21 @@ export async function run(): Promise<void> {
           await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies)
         }
 
-        // Upload HQ version
-        if (shouldCreateHQ && hqConfig) {
-          core.info('🚀 Creating HQ version...')
+        let hqZipPath: string | null = null
+        let hqId: string | null = null
+        let lqZipPath: string | null = null
+        let lqId: string | null = null
 
+        if (shouldCreateHQ && hqConfig) {
+          core.info('📦 Creating HQ version...')
           const hqBranch = hqConfig.branch || 'main'
           const hqIgnoreFiles = hqConfig.escrow_ignore || []
-          const hqZipPath = await createHQVersion(
+          hqZipPath = await createHQVersion(
             hqConfig.asset_name || `${baseAssetName}-hq`,
             hqBranch,
             hqIgnoreFiles
           )
 
-          let hqId: string
           if (hqConfig.asset_id) {
             hqId = hqConfig.asset_id
             core.info(`Using HQ asset_id: ${hqId}`)
@@ -392,24 +394,18 @@ export async function run(): Promise<void> {
             core.info(`Using fallback HQ name: ${fallbackName}`)
             hqId = await resolveAssetId(fallbackName, cookies)
           }
-
-          core.info('Uploading HQ version ...')
-          await uploadZip(hqZipPath, hqId, chunkSize, cookies)
         }
 
-        // Upload LQ version
         if (shouldCreateLQ && lqConfig) {
-          core.info('🚀 Creating LQ version...')
-
+          core.info('📦 Creating LQ version...')
           const lqBranch = lqConfig.branch || 'low-quality'
           const lqIgnoreFiles = lqConfig.escrow_ignore || []
-          const lqZipPath = await createLQVersion(
+          lqZipPath = await createLQVersion(
             lqConfig.asset_name || `${baseAssetName}-lq`,
             lqBranch,
             lqIgnoreFiles
           )
 
-          let lqId: string
           if (lqConfig.asset_id) {
             lqId = lqConfig.asset_id
             core.info(`Using LQ asset_id: ${lqId}`)
@@ -421,8 +417,16 @@ export async function run(): Promise<void> {
             core.info(`Using fallback LQ name: ${fallbackName}`)
             lqId = await resolveAssetId(fallbackName, cookies)
           }
+        }
 
-          core.info('Uploading LQ version ...')
+        // Now upload both versions
+        if (hqZipPath && hqId) {
+          core.info('🚀 Uploading HQ version...')
+          await uploadZip(hqZipPath, hqId, chunkSize, cookies)
+        }
+
+        if (lqZipPath && lqId) {
+          core.info('🚀 Uploading LQ version...')
           await uploadZip(lqZipPath, lqId, chunkSize, cookies)
         }
       } else {

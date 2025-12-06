@@ -52,11 +52,115 @@ CFX provides API keys for this action.
 | skipUpload | boolean? | Skip the upload and only log in to the portal                      | This will skip the asset upload to the portal and only go through the login process. Useful in cron jobs to prevent the cookie from getting invalidated due to inactivity            |
 | maxRetries | number?  | The maximum number of retries. (default: 3)                        | This is the maximum number of times the login will be retried if it fails.                                                                                                           |
 | chunkSize  | number?  | How large one chunk is for upload. Default: 2097152 bytes          |                                                                                                                                                                                      |
+| escrowed   | yaml?    | Escrowed version configuration                                     | YAML object with `asset_id`, `asset_name`, and `escrow_ignore` array. See examples below.                                                                                            |
+| openSource | yaml?    | Open source version configuration                                  | YAML object with `asset_id` and `asset_name`. See examples below.                                                                                                                    |
+| hq         | yaml?    | High quality version configuration                                 | YAML object with `asset_id`, `asset_name`, `branch` (default: "main"), and optional `escrow_ignore`. See examples below.                                                             |
+| lq         | yaml?    | Low quality version configuration                                  | YAML object with `asset_id`, `asset_name`, `branch` (default: "low-quality"), and optional `escrow_ignore`. See examples below.                                                      |
 
 > [!NOTE]
 >
 > `?` after the type indicates that the parameter is optional. if no assetName  
 > or assetId is provided, the repository name will be used as assetName.
+
+## Multi-Version Upload Support
+
+This action supports uploading multiple versions of your resource in a single
+workflow run:
+
+### Escrowed and Open Source Versions
+
+Upload both escrowed and open source versions from the current branch:
+
+```yaml
+- name: Upload to CFX Portal
+  uses: Tynopia/cfx-portal-upload@main
+  with:
+    cookie: ${{ secrets.FORUM_COOKIE }}
+    escrowed: |
+      asset_id: "534535"
+      asset_name: "my-resource-escrowed"
+      escrow_ignore: ['init.lua', 'shared/config.lua', 'shared/utils.lua']
+    openSource: |
+      asset_id: "534536"
+      asset_name: "my-resource-source"
+```
+
+### High Quality (HQ) and Low Quality (LQ) Versions
+
+Upload different quality versions from different branches (e.g., `main` for HQ
+and `low-quality` for LQ):
+
+```yaml
+- name: Upload to CFX Portal
+  uses: Tynopia/cfx-portal-upload@main
+  with:
+    cookie: ${{ secrets.FORUM_COOKIE }}
+    hq: |
+      asset_id: "534537"
+      asset_name: "my-resource-hq"
+      branch: "main"
+      escrow_ignore: ['init.lua', 'shared/config.lua']
+    lq: |
+      asset_id: "534538"
+      asset_name: "my-resource-lq"
+      branch: "low-quality"
+      escrow_ignore: ['init.lua', 'shared/config.lua']
+```
+
+> [!IMPORTANT]
+>
+> When using HQ/LQ versions, make sure to checkout with `fetch-depth: 0` to
+> fetch all branches:
+>
+> ```yaml
+> - name: Checkout code
+>   uses: actions/checkout@v4
+>   with:
+>     fetch-depth: 0
+> ```
+
+### Combining All Options
+
+You can combine escrowed, open source, HQ, and LQ versions in a single workflow:
+
+```yaml
+- name: Upload to CFX Portal
+  uses: Tynopia/cfx-portal-upload@main
+  with:
+    cookie: ${{ secrets.FORUM_COOKIE }}
+    escrowed: |
+      asset_id: "534535"
+      asset_name: "my-resource-escrowed"
+      escrow_ignore: ['init.lua', 'shared/config.lua']
+    openSource: |
+      asset_id: "534536"
+      asset_name: "my-resource-source"
+    hq: |
+      asset_id: "534537"
+      asset_name: "my-resource-hq"
+      branch: "main"
+    lq: |
+      asset_id: "534538"
+      asset_name: "my-resource-lq"
+      branch: "low-quality"
+```
+
+## Features
+
+- 🚀 **Automated Building**: Automatically builds `web` and `dui` folders using
+  pnpm before upload
+- 📦 **Multi-Version Support**: Upload escrowed, open source, HQ, and LQ
+  versions in one workflow
+- 🔀 **Branch-Based Versions**: Create different quality versions from different
+  Git branches
+- 🔒 **Configurable Escrow**: Define which files should remain unobfuscated via
+  `escrow_ignore`
+- 📝 **Metadata Updates**: Automatically updates `fxmanifest.lua` with resource
+  name, author, version, and description
+- 📤 **Chunked Upload**: Supports large file uploads with configurable chunk
+  size (default 2MB)
+- 🔄 **Cookie Refresh**: Scheduled workflow support to keep authentication
+  active
 
 ## Skip Upload
 

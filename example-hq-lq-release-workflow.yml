@@ -1,0 +1,29 @@
+name: Upload HQ and LQ versions to CFX Portal
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      # WAŻNE: Checkout z fetch-depth: 0 żeby pobrać wszystkie branche
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Pobierz wszystkie branche
+
+      # Upload HQ i LQ wersji
+      - name: Upload to CFX Portal
+        uses: Kojadev/cfx-portal-upload@main
+        with:
+          cookie: ${{ secrets.FORUM_COOKIE }}
+          hq: |
+            asset_id: "123456"
+            asset_name: "lspd-eup-pack-hq"
+            branch: "main"
+          lq: |
+            asset_id: "123457"
+            asset_name: "lspd-eup-pack-lq"
+            branch: "low-quality"

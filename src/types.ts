@@ -28,13 +28,18 @@ export interface AssetConfig {
   asset_id?: string
   asset_name?: string
   escrow_ignore?: string[]
+  branch?: string
 }
 
 export interface BuildOptions {
   createEscrowed: boolean
   createOpenSource: boolean
+  createHq: boolean
+  createLq: boolean
   escrowedConfig?: AssetConfig
   openSourceConfig?: AssetConfig
+  hqConfig?: AssetConfig
+  lqConfig?: AssetConfig
   // Legacy support
   escrowedAssetName?: string
   openSourceAssetName?: string
@@ -50,4 +55,6 @@ export interface EscrowIgnoreConfig {
 export interface ZipPaths {
   escrowed?: string
   openSource?: string
+  hq?: string
+  lq?: string
 }

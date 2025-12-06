@@ -74,6 +74,16 @@ inputs:
     description:
       'Open source version configuration (YAML object with asset_id, asset_name)'
     required: false
+  hq:
+    description:
+      'High quality version configuration (YAML object with asset_id,
+      asset_name, branch)'
+    required: false
+  lq:
+    description:
+      'Low quality version configuration (YAML object with asset_id, asset_name,
+      branch)'
+    required: false
 
 runs:
   using: node20

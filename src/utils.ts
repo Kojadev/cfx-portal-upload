@@ -311,6 +311,138 @@ async function buildWebAndDui(): Promise<void> {
 }
 
 /**
+ * Checkout a specific branch
+ * @param branchName The name of the branch to checkout
+ */
+async function checkoutBranch(branchName: string): Promise<void> {
+  const workspacePath = getEnv('GITHUB_WORKSPACE')
+  core.info(`🔀 Checking out branch: ${branchName}`)
+
+  const { spawn } = require('child_process')
+
+  await new Promise<void>((resolve, reject) => {
+    const gitProcess = spawn('git', ['fetch', 'origin', branchName], {
+      cwd: workspacePath,
+      stdio: 'inherit',
+      shell: true
+    })
+
+    gitProcess.on('close', (code: number | null) => {
+      if (code === 0) {
+        const checkoutProcess = spawn('git', ['checkout', branchName], {
+          cwd: workspacePath,
+          stdio: 'inherit',
+          shell: true
+        })
+
+        checkoutProcess.on('close', (checkoutCode: number | null) => {
+          if (checkoutCode === 0) {
+            core.info(`✅ Checked out branch: ${branchName}`)
+            resolve()
+          } else {
+            reject(new Error(`Git checkout failed with code ${checkoutCode}`))
+          }
+        })
+      } else {
+        reject(new Error(`Git fetch failed with code ${code}`))
+      }
+    })
+  })
+}
+
+/**
+ * Creates HQ version of the asset
+ * @param assetName The name of the asset
+ * @param branch The branch to checkout (defaults to 'main')
+ * @param ignoreFiles Optional array of files to ignore in escrow
+ * @returns Path to the HQ zip file
+ */
+export async function createHQVersion(
+  assetName: string,
+  branch: string = 'main',
+  ignoreFiles?: string[]
+): Promise<string> {
+  core.info(`📦 Creating HQ version from branch: ${branch}`)
+
+  // Checkout the HQ branch
+  await checkoutBranch(branch)
+
+  // Build web and DUI
+  await buildWebAndDui()
+
+  const workspacePath = getEnv('GITHUB_WORKSPACE')
+  const workspaceName = path.basename(workspacePath)
+  const zipPath = path.join(workspacePath, `${workspaceName}.hq.zip`)
+
+  // Update fxmanifest metadata
+  const fxmanifestPath = path.join(workspacePath, 'fxmanifest.lua')
+  if (fs.existsSync(fxmanifestPath)) {
+    await updateFxManifestMetadata(fxmanifestPath, assetName)
+  }
+
+  // Create escrowed zip if ignoreFiles provided
+  if (ignoreFiles && ignoreFiles.length > 0) {
+    const escrowIgnorePath = path.join(workspacePath, 'escrow_ignore')
+    const escrowIgnoreContent = ignoreFiles.join('\n')
+    fs.writeFileSync(escrowIgnorePath, escrowIgnoreContent)
+    core.info(
+      `✅ Created escrow_ignore file with ${ignoreFiles.length} entries`
+    )
+  }
+
+  await zipDirectory(workspacePath, zipPath, workspaceName)
+  core.info(`✅ HQ version created: ${zipPath}`)
+
+  return zipPath
+}
+
+/**
+ * Creates LQ version of the asset
+ * @param assetName The name of the asset
+ * @param branch The branch to checkout (defaults to 'low-quality')
+ * @param ignoreFiles Optional array of files to ignore in escrow
+ * @returns Path to the LQ zip file
+ */
+export async function createLQVersion(
+  assetName: string,
+  branch: string = 'low-quality',
+  ignoreFiles?: string[]
+): Promise<string> {
+  core.info(`📦 Creating LQ version from branch: ${branch}`)
+
+  // Checkout the LQ branch
+  await checkoutBranch(branch)
+
+  // Build web and DUI
+  await buildWebAndDui()
+
+  const workspacePath = getEnv('GITHUB_WORKSPACE')
+  const workspaceName = path.basename(workspacePath)
+  const zipPath = path.join(workspacePath, `${workspaceName}.lq.zip`)
+
+  // Update fxmanifest metadata
+  const fxmanifestPath = path.join(workspacePath, 'fxmanifest.lua')
+  if (fs.existsSync(fxmanifestPath)) {
+    await updateFxManifestMetadata(fxmanifestPath, assetName)
+  }
+
+  // Create escrowed zip if ignoreFiles provided
+  if (ignoreFiles && ignoreFiles.length > 0) {
+    const escrowIgnorePath = path.join(workspacePath, 'escrow_ignore')
+    const escrowIgnoreContent = ignoreFiles.join('\n')
+    fs.writeFileSync(escrowIgnorePath, escrowIgnoreContent)
+    core.info(
+      `✅ Created escrow_ignore file with ${ignoreFiles.length} entries`
+    )
+  }
+
+  await zipDirectory(workspacePath, zipPath, workspaceName)
+  core.info(`✅ LQ version created: ${zipPath}`)
+
+  return zipPath
+}
+
+/**
  * Creates escrowed version of the asset
  * @param assetName The name of the asset
  * @param ignoreFiles Optional array of files to ignore in escrow

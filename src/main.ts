@@ -30,7 +30,6 @@ import {
 export async function run(): Promise<void> {
   await preparePuppeteer()
 
-  // Try to find system Chrome executable
   const findChrome = () => {
     const possiblePaths = [
       '/usr/bin/google-chrome-stable',
@@ -48,9 +47,7 @@ export async function run(): Promise<void> {
           core.info(`Found Chrome at: ${path}`)
           return path
         }
-      } catch (e) {
-        // Continue searching
-      }
+      } catch (e) {}
     }
     return undefined
   }
@@ -90,7 +87,6 @@ export async function run(): Promise<void> {
     const makeZip = core.getInput('makeZip').toLowerCase() === 'true'
     const skipUpload = core.getInput('skipUpload').toLowerCase() === 'true'
 
-    // Version config inputs
     const escrowedInput = core.getInput('escrowed')
     const openSourceInput = core.getInput('openSource')
 
@@ -105,8 +101,6 @@ export async function run(): Promise<void> {
       throw new Error('Invalid max retries. Must be a number.')
     }
 
-    // No asset id or name provided, using the repository name
-    // If skipUpload is true, we don't need to update the asset name
     if (!assetId && !assetName && !skipUpload) {
       core.debug('No asset id or name provided, using repository name...')
       assetName = basename(getEnv('GITHUB_WORKSPACE'))
@@ -114,9 +108,6 @@ export async function run(): Promise<void> {
 
     const redirectUrl = await getRedirectUrl(page, maxRetries)
     await setForumCookie(browser, page)
-
-    core.info('Navigating to CFX Portal...')
-    core.info(`Redirect URL: ${redirectUrl}`)
 
     await page.goto(redirectUrl, {
       waitUntil: 'domcontentloaded',
@@ -126,7 +117,6 @@ export async function run(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 3000))
 
     const currentUrl = page.url()
-    core.info(`Current URL after navigation: ${currentUrl}`)
 
     if (currentUrl.includes('portal.cfx.re')) {
       if (skipUpload) {
@@ -134,33 +124,22 @@ export async function run(): Promise<void> {
         return
       }
 
-      core.info('Redirected to CFX Portal. Processing uploads ...')
       const cookies = await getCookies(browser)
 
-      // Parse structured inputs
       let escrowedConfig: any = null
       let openSourceConfig: any = null
 
-      core.info(`📝 Raw escrowedInput: ${JSON.stringify(escrowedInput)}`)
-      core.info(`📝 Raw openSourceInput: ${JSON.stringify(openSourceInput)}`)
-
       if (escrowedInput) {
-        core.info('🔧 Parsing escrowed config...')
         try {
           escrowedConfig = JSON.parse(escrowedInput)
-          core.info('✅ Parsed escrowed as JSON')
         } catch {
-          // Try YAML-like parsing for simple cases
-          core.info('⚠️ JSON parse failed, trying YAML-like parsing...')
           const lines = escrowedInput.split('\n').filter(line => line.trim())
           escrowedConfig = {}
           for (const line of lines) {
             const match = line.match(/^\s*(\w+):\s*(.+)$/)
             if (match) {
               const [, key, value] = match
-              core.info(`  Found key: ${key}, value: ${value}`)
               if (key === 'escrow_ignore') {
-                // Handle array syntax: ['item1', 'item2'] or "item1,item2"
                 if (value.includes('[') && value.includes(']')) {
                   escrowedConfig[key] = value
                     .replace(/[\[\]'"`]/g, '')
@@ -177,36 +156,25 @@ export async function run(): Promise<void> {
               }
             }
           }
-          core.info(
-            `✅ Parsed escrowed config: ${JSON.stringify(escrowedConfig)}`
-          )
         }
       }
 
       if (openSourceInput) {
-        core.info('🔧 Parsing openSource config...')
         try {
           openSourceConfig = JSON.parse(openSourceInput)
-          core.info('✅ Parsed openSource as JSON')
         } catch {
-          core.info('⚠️ JSON parse failed, trying YAML-like parsing...')
           const lines = openSourceInput.split('\n').filter(line => line.trim())
           openSourceConfig = {}
           for (const line of lines) {
             const match = line.match(/^\s*(\w+):\s*(.+)$/)
             if (match) {
               const [, key, value] = match
-              core.info(`  Found key: ${key}, value: ${value}`)
               openSourceConfig[key] = value.replace(/[\"']/g, '').trim()
             }
           }
-          core.info(
-            `✅ Parsed openSource config: ${JSON.stringify(openSourceConfig)}`
-          )
         }
       }
 
-      // Parse HQ and LQ configs
       const hqInput = core.getInput('hq')
       const lqInput = core.getInput('lq')
 
@@ -214,19 +182,15 @@ export async function run(): Promise<void> {
       let lqConfig: any = null
 
       if (hqInput) {
-        core.info('🔧 Parsing HQ config...')
         try {
           hqConfig = JSON.parse(hqInput)
-          core.info('✅ Parsed HQ as JSON')
         } catch {
-          core.info('⚠️ JSON parse failed, trying YAML-like parsing...')
           const lines = hqInput.split('\n').filter(line => line.trim())
           hqConfig = {}
           for (const line of lines) {
             const match = line.match(/^\s*(\w+):\s*(.+)$/)
             if (match) {
               const [, key, value] = match
-              core.info(`  Found key: ${key}, value: ${value}`)
               if (key === 'escrow_ignore') {
                 if (value.includes('[') && value.includes(']')) {
                   hqConfig[key] = value
@@ -244,24 +208,19 @@ export async function run(): Promise<void> {
               }
             }
           }
-          core.info(`✅ Parsed HQ config: ${JSON.stringify(hqConfig)}`)
         }
       }
 
       if (lqInput) {
-        core.info('🔧 Parsing LQ config...')
         try {
           lqConfig = JSON.parse(lqInput)
-          core.info('✅ Parsed LQ as JSON')
         } catch {
-          core.info('⚠️ JSON parse failed, trying YAML-like parsing...')
           const lines = lqInput.split('\n').filter(line => line.trim())
           lqConfig = {}
           for (const line of lines) {
             const match = line.match(/^\s*(\w+):\s*(.+)$/)
             if (match) {
               const [, key, value] = match
-              core.info(`  Found key: ${key}, value: ${value}`)
               if (key === 'escrow_ignore') {
                 if (value.includes('[') && value.includes(']')) {
                   lqConfig[key] = value
@@ -279,11 +238,9 @@ export async function run(): Promise<void> {
               }
             }
           }
-          core.info(`✅ Parsed LQ config: ${JSON.stringify(lqConfig)}`)
         }
       }
 
-      // Determine which versions to create
       const shouldCreateEscrowed = !!escrowedConfig
       const shouldCreateOpenSource = !!openSourceConfig
       const shouldCreateHQ = !!hqConfig
@@ -294,16 +251,14 @@ export async function run(): Promise<void> {
       if (shouldCreateOpenSource) uploadTypes.push('open-source')
       if (shouldCreateHQ) uploadTypes.push('HQ')
       if (shouldCreateLQ) uploadTypes.push('LQ')
-      core.info(`🚀 Creating versions: ${uploadTypes.join(', ')}`)
+      core.info(`🚀 Uploading: ${uploadTypes.join(', ')}`)
 
-      // Check if we should create multiple versions
       if (
         shouldCreateEscrowed ||
         shouldCreateOpenSource ||
         shouldCreateHQ ||
         shouldCreateLQ
       ) {
-        core.info('🚀 Using multi-version upload logic')
         const buildOptions: BuildOptions = {
           createEscrowed: shouldCreateEscrowed,
           createOpenSource: shouldCreateOpenSource,
@@ -318,17 +273,12 @@ export async function run(): Promise<void> {
         const baseAssetName = assetName || basename(getEnv('GITHUB_WORKSPACE'))
         const zipPaths = await createVersions(buildOptions, baseAssetName)
 
-        // Upload escrowed version
         if (zipPaths.escrowed && shouldCreateEscrowed) {
           let escrowedId: string
 
           if (escrowedConfig?.asset_id) {
             escrowedId = escrowedConfig.asset_id
-            core.info(`Using escrowed asset_id: ${escrowedId}`)
           } else if (escrowedConfig?.asset_name) {
-            core.info(
-              `Looking up escrowed asset by name: ${escrowedConfig.asset_name}`
-            )
             escrowedId = await resolveAssetId(
               escrowedConfig.asset_name,
               cookies
@@ -339,21 +289,16 @@ export async function run(): Promise<void> {
             )
           }
 
-          core.info('Uploading escrowed version ...')
+          core.info('🚀 Uploading escrowed version...')
           await uploadZip(zipPaths.escrowed, escrowedId, chunkSize, cookies)
         }
 
-        // Upload open source version
         if (zipPaths.openSource && shouldCreateOpenSource) {
           let openSourceId: string
 
           if (openSourceConfig?.asset_id) {
             openSourceId = openSourceConfig.asset_id
-            core.info(`Using openSource asset_id: ${openSourceId}`)
           } else if (openSourceConfig?.asset_name) {
-            core.info(
-              `Looking up openSource asset by name: ${openSourceConfig.asset_name}`
-            )
             openSourceId = await resolveAssetId(
               openSourceConfig.asset_name,
               cookies
@@ -364,7 +309,7 @@ export async function run(): Promise<void> {
             )
           }
 
-          core.info('Uploading open source version ...')
+          core.info('🚀 Uploading open source version...')
           await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies)
         }
 
@@ -385,13 +330,10 @@ export async function run(): Promise<void> {
 
           if (hqConfig.asset_id) {
             hqId = hqConfig.asset_id
-            core.info(`Using HQ asset_id: ${hqId}`)
           } else if (hqConfig.asset_name) {
-            core.info(`Looking up HQ asset by name: ${hqConfig.asset_name}`)
             hqId = await resolveAssetId(hqConfig.asset_name, cookies)
           } else {
             const fallbackName = `${baseAssetName}-hq`
-            core.info(`Using fallback HQ name: ${fallbackName}`)
             hqId = await resolveAssetId(fallbackName, cookies)
           }
         }
@@ -408,13 +350,10 @@ export async function run(): Promise<void> {
 
           if (lqConfig.asset_id) {
             lqId = lqConfig.asset_id
-            core.info(`Using LQ asset_id: ${lqId}`)
           } else if (lqConfig.asset_name) {
-            core.info(`Looking up LQ asset by name: ${lqConfig.asset_name}`)
             lqId = await resolveAssetId(lqConfig.asset_name, cookies)
           } else {
             const fallbackName = `${baseAssetName}-lq`
-            core.info(`Using fallback LQ name: ${fallbackName}`)
             lqId = await resolveAssetId(fallbackName, cookies)
           }
         }
@@ -430,13 +369,8 @@ export async function run(): Promise<void> {
           await uploadZip(lqZipPath, lqId, chunkSize, cookies)
         }
       } else {
-        core.info('⚠️ Using single upload logic (fallback)')
-        core.info(`  assetName: ${assetName}`)
-        core.info(`  assetId: ${assetId}`)
-
         // Original single upload logic
         if (assetName) {
-          core.info(`🔍 Looking up single asset by name: ${assetName}`)
           assetId = await resolveAssetId(assetName, cookies)
         }
 
@@ -476,24 +410,16 @@ async function getRedirectUrl(page: Page, maxRetries: number): Promise<string> {
 
   while (!loaded && attempt < maxRetries) {
     try {
-      core.info('Navigating to SSO URL ...')
-
       await page.goto(getUrl('SSO'), {
         waitUntil: 'domcontentloaded',
         timeout: 60000
       })
 
-      core.info('Navigated to SSO URL. Parsing response body ...')
-
       const responseBody = await page.evaluate(
         () => JSON.parse(document.body.innerText) as SSOResponseBody
       )
 
-      core.debug('Parsed response body.')
-
       redirectUrl = responseBody.url
-
-      core.info('Redirected to Forum Origin ...')
 
       const forumUrl = new URL(redirectUrl).origin
       await page.goto(forumUrl, {
@@ -503,7 +429,9 @@ async function getRedirectUrl(page: Page, maxRetries: number): Promise<string> {
 
       loaded = true
     } catch {
-      core.info(`Failed to navigate to SSO URL. Retrying in 1 seconds...`)
+      core.info(
+        `⚠️ SSO navigation failed, retrying... (${attempt + 1}/${maxRetries})`
+      )
       await new Promise(resolve => setTimeout(resolve, 1000))
       attempt++
     }
@@ -584,7 +512,6 @@ async function getZipPath(
 
   core.info('Creating zip file ...')
 
-  // Clean up github things before zipping
   deleteIfExists('.git/')
   deleteIfExists('.github/')
   deleteIfExists('.vscode/')

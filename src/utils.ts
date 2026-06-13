@@ -57,8 +57,6 @@ export async function resolveAssetId(
   name: string,
   cookies: string
 ): Promise<string> {
-  core.info(`🔍 Searching for asset: "${name}"`)
-
   try {
     const search = await axios.get<SearchResponse>(
       `https://portal-api.cfx.re/v1/me/assets?search=${name}&sort=asset.name&direction=asc`,
@@ -68,8 +66,6 @@ export async function resolveAssetId(
         }
       }
     )
-
-    core.info(`📊 Found ${search.data.items.length} assets matching search`)
 
     if (search.data.items.length == 0) {
       core.error(`❌ No assets found matching: "${name}"`)
@@ -81,14 +77,8 @@ export async function resolveAssetId(
       )
     }
 
-    core.info('📋 Available assets:')
-    search.data.items.forEach((asset: any) => {
-      core.info(`  - "${asset.name}" (ID: ${asset.id})`)
-    })
-
     for (const asset of search.data.items) {
       if (asset.name === name) {
-        core.info(`✅ Found exact match: "${asset.name}" (ID: ${asset.id})`)
         return asset.id.toString()
       }
     }
@@ -330,7 +320,6 @@ async function checkoutBranch(branchName: string): Promise<void> {
 
     resetProcess.on('close', (code: number | null) => {
       if (code === 0) {
-        core.info('✅ Reset local changes')
         resolve()
       } else {
         reject(new Error(`Git reset failed with code ${code}`))
@@ -348,7 +337,6 @@ async function checkoutBranch(branchName: string): Promise<void> {
 
     cleanProcess.on('close', (code: number | null) => {
       if (code === 0) {
-        core.info('✅ Cleaned untracked files')
         resolve()
       } else {
         // Clean can fail if there's nothing to clean, that's ok
@@ -439,15 +427,12 @@ export async function createLQVersion(
 ): Promise<string> {
   core.info(`📦 Creating LQ version from branch: ${branch}`)
 
-  // Checkout the LQ branch
   await checkoutBranch(branch)
 
   const workspacePath = getEnv('GITHUB_WORKSPACE')
   const workspaceName = path.basename(workspacePath)
-  // Save ZIP outside workspace to prevent git clean from removing it
   const zipPath = path.join(workspacePath, '..', `${workspaceName}.lq.zip`)
 
-  // Exclude Git and unnecessary files from ZIP
   const excludePaths = [
     '.git',
     '.github',
@@ -706,7 +691,6 @@ async function zipDirectory(
   const zipfile = new yazl.ZipFile()
   const outputZipPath = path.resolve(zipPath)
 
-  // Normalize exclude paths for comparison
   const normalizedExcludes = excludePaths.map(p => path.normalize(p))
 
   function addDirectoryToZip(dir: string, zipPath: string): void {
@@ -715,7 +699,6 @@ async function zipDirectory(
       const fullPath = path.join(dir, entry.name)
       const relativePath = path.relative(sourceDir, fullPath)
 
-      // Check if this path should be excluded
       const shouldExclude = normalizedExcludes.some(exclude => {
         const normalized = path.normalize(relativePath)
         return (

@@ -296568,7 +296568,7 @@ async function startReupload(zipPath, assetId, chunkSize, cookies) {
     const originalFileName = (0, path_1.basename)(zipPath);
     const chunkCount = Math.ceil(totalSize / chunkSize);
     const version = process.env.GITHUB_REF_NAME || '1.0.0';
-    const changelog = process.env.RELEASE_BODY || '';
+    const changelog = core.getInput('changelog') || process.env.RELEASE_BODY || '';
     core.info('Starting upload ...');
     core.debug(`Total size: ${totalSize}`);
     core.debug(`Original file name: ${originalFileName}`);

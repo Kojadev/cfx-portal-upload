@@ -57,6 +57,10 @@ inputs:
     description:
       'Low quality version config (YAML: asset_id, asset_name, branch)'
     required: false
+  changelog:
+    description: 'Release changelog / description to include in the version'
+    required: false
+    default: ''
 
 runs:
   using: node20

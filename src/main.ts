@@ -540,7 +540,7 @@ async function startReupload(
   const chunkCount = Math.ceil(totalSize / chunkSize)
 
   const version = process.env.GITHUB_REF_NAME || '1.0.0'
-  const changelog = process.env.RELEASE_BODY || ''
+  const changelog = core.getInput('changelog') || process.env.RELEASE_BODY || ''
 
   core.info('Starting upload ...')
 

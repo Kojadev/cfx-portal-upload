@@ -472,7 +472,7 @@ export async function createEscrowedVersion(
   await createDirectory(escrowedDir)
   await createDirectory(path.join(escrowedDir, 'web', 'build'))
 
-  const foldersToInclude = ['client', 'shared', 'locales', 'server']
+  const foldersToInclude = ['client', 'shared', 'locales', 'server', 'data']
   const filesToInclude = ['fxmanifest.lua', 'init.lua']
 
   for (const folder of foldersToInclude) {
@@ -537,7 +537,7 @@ export async function createOpenSourceVersion(
   await createDirectory(openSourceDir)
   await createDirectory(path.join(openSourceDir, 'web'))
 
-  const foldersToInclude = ['client', 'shared', 'locales', 'server']
+  const foldersToInclude = ['client', 'shared', 'locales', 'server', 'data']
   const filesToInclude = ['fxmanifest.lua', 'init.lua']
 
   for (const folder of foldersToInclude) {

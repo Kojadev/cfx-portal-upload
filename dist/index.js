@@ -297117,7 +297117,7 @@ async function createEscrowedVersion(assetName, ignoreFiles) {
     const escrowedDir = path_2.default.join(workspacePath, 'escrowed');
     await createDirectory(escrowedDir);
     await createDirectory(path_2.default.join(escrowedDir, 'web', 'build'));
-    const foldersToInclude = ['client', 'shared', 'locales', 'server'];
+    const foldersToInclude = ['client', 'shared', 'locales', 'server', 'data'];
     const filesToInclude = ['fxmanifest.lua', 'init.lua'];
     for (const folder of foldersToInclude) {
         const srcPath = path_2.default.join(workspacePath, folder);
@@ -297166,7 +297166,7 @@ async function createOpenSourceVersion(assetName) {
     const openSourceDir = path_2.default.join(workspacePath, 'open-source');
     await createDirectory(openSourceDir);
     await createDirectory(path_2.default.join(openSourceDir, 'web'));
-    const foldersToInclude = ['client', 'shared', 'locales', 'server'];
+    const foldersToInclude = ['client', 'shared', 'locales', 'server', 'data'];
     const filesToInclude = ['fxmanifest.lua', 'init.lua'];
     for (const folder of foldersToInclude) {
         const srcPath = path_2.default.join(workspacePath, folder);

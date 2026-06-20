@@ -1,57 +1,10 @@
-import { Browser, getInstalledBrowsers, install } from '@puppeteer/browsers'
 import { SearchResponse, Urls, BuildOptions, ZipPaths } from './types'
-import { homedir } from 'os'
-import { join } from 'path'
 
 import * as core from '@actions/core'
 import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
 import yazl from 'yazl'
-
-/**
- * Get the cache directory for Puppeteer.
- * @returns {string} The cache directory.
- */
-function getCacheDirectory(): string {
-  return join(homedir(), '.cache', 'puppeteer')
-}
-
-/**
- * Prepare the Puppeteer environment by installing the necessary browser.
- * @returns {Promise<void>} Resolves when the environment is prepared.
- */
-export async function preparePuppeteer(): Promise<void> {
-  if (process.env.RUNNER_TEMP === undefined) {
-    core.info('Running locally, skipping Puppeteer setup ...')
-    return
-  }
-
-  try {
-    const cacheDirectory = getCacheDirectory()
-    const installed = await getInstalledBrowsers({
-      cacheDir: cacheDirectory
-    })
-
-    const chromeInstalled = installed.some(
-      browser => browser.browser === Browser.CHROME
-    )
-
-    if (!chromeInstalled) {
-      core.info('Installing Chrome via Puppeteer...')
-      await install({
-        cacheDir: cacheDirectory,
-        browser: Browser.CHROME,
-        buildId: '131.0.6778.204'
-      })
-      core.info('Chrome installation completed')
-    } else {
-      core.info('Chrome already installed')
-    }
-  } catch (error) {
-    core.warning(`Chrome installation failed: ${(error as Error).message}`)
-  }
-}
 
 export async function resolveAssetId(
   name: string,
@@ -111,7 +64,10 @@ export async function resolveAssetId(
   }
 }
 
-export function getUrl(type: keyof typeof Urls, params?: Record<string, string | number>): string {
+export function getUrl(
+  type: keyof typeof Urls,
+  params?: Record<string, string | number>
+): string {
   let url = Urls.API + Urls[type]
   if (params) {
     for (const [key, value] of Object.entries(params)) {

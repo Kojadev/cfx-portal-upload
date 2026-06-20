@@ -1,22 +1,16 @@
 import * as core from '@actions/core'
-import puppeteer, { Browser, Page } from 'puppeteer'
 import FormData from 'form-data'
 import axios from 'axios'
 
 import { createReadStream, statSync } from 'fs'
 import { basename } from 'path'
-import {
-  ReUploadResponse,
-  SSOResponseBody,
-  BuildOptions,
-  ZipPaths
-} from './types'
+import { ReUploadResponse, BuildOptions, ZipPaths } from './types'
+import { getPortalCookies } from './auth'
 import {
   deleteIfExists,
   resolveAssetId,
   getEnv,
   getUrl,
-  preparePuppeteer,
   zipAsset,
   createVersions,
   createHQVersion,
@@ -28,57 +22,6 @@ import {
  * @returns {Promise<void>} Resolves when the action is complete.
  */
 export async function run(): Promise<void> {
-  await preparePuppeteer()
-
-  const findChrome = () => {
-    const possiblePaths = [
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/google-chrome',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/snap/bin/chromium',
-      process.env.CHROME_BIN
-    ].filter(Boolean)
-
-    for (const path of possiblePaths) {
-      try {
-        const fs = require('fs')
-        if (fs.existsSync(path)) {
-          core.info(`Found Chrome at: ${path}`)
-          return path
-        }
-      } catch (e) {}
-    }
-    return undefined
-  }
-
-  const chromePath = findChrome()
-  const launchOptions: any = {
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-first-run',
-      '--disable-default-apps',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding'
-    ]
-  }
-
-  if (chromePath) {
-    launchOptions.executablePath = chromePath
-    core.info(`Using Chrome executable: ${chromePath}`)
-  } else {
-    core.info('No system Chrome found, trying default Puppeteer behavior')
-  }
-
-  const browser = await puppeteer.launch(launchOptions)
-
-  const page = await browser.newPage()
-
   try {
     let assetId = core.getInput('assetId')
     let assetName = core.getInput('assetName')
@@ -106,383 +49,267 @@ export async function run(): Promise<void> {
       assetName = basename(getEnv('GITHUB_WORKSPACE'))
     }
 
-    const redirectUrl = await getRedirectUrl(page, maxRetries)
-    await setForumCookie(browser, page)
+    const cookies = await getPortalCookies(core.getInput('cookie'), maxRetries)
 
-    await page.goto(redirectUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: 90000
-    })
+    if (skipUpload) {
+      core.info('Authenticated with CFX Portal. Skipping upload ...')
+      return
+    }
 
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    let escrowedConfig: any = null
+    let openSourceConfig: any = null
 
-    const currentUrl = page.url()
-
-    if (currentUrl.includes('portal.cfx.re')) {
-      if (skipUpload) {
-        core.info('Redirected to CFX Portal. Skipping upload ...')
-        return
-      }
-
-      const cookies = await getCookies(browser)
-
-      let escrowedConfig: any = null
-      let openSourceConfig: any = null
-
-      if (escrowedInput) {
-        try {
-          escrowedConfig = JSON.parse(escrowedInput)
-        } catch {
-          const lines = escrowedInput.split('\n').filter(line => line.trim())
-          escrowedConfig = {}
-          for (const line of lines) {
-            const match = line.match(/^\s*(\w+):\s*(.+)$/)
-            if (match) {
-              const [, key, value] = match
-              if (key === 'escrow_ignore') {
-                if (value.includes('[') && value.includes(']')) {
-                  escrowedConfig[key] = value
-                    .replace(/[\[\]'"`]/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                } else {
-                  escrowedConfig[key] = value
-                    .replace(/[\"']/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                }
+    if (escrowedInput) {
+      try {
+        escrowedConfig = JSON.parse(escrowedInput)
+      } catch {
+        const lines = escrowedInput.split('\n').filter(line => line.trim())
+        escrowedConfig = {}
+        for (const line of lines) {
+          const match = line.match(/^\s*(\w+):\s*(.+)$/)
+          if (match) {
+            const [, key, value] = match
+            if (key === 'escrow_ignore') {
+              if (value.includes('[') && value.includes(']')) {
+                escrowedConfig[key] = value
+                  .replace(/[\[\]'"`]/g, '')
+                  .split(',')
+                  .map(s => s.trim())
               } else {
-                escrowedConfig[key] = value.replace(/[\"']/g, '').trim()
+                escrowedConfig[key] = value
+                  .replace(/[\"']/g, '')
+                  .split(',')
+                  .map(s => s.trim())
               }
+            } else {
+              escrowedConfig[key] = value.replace(/[\"']/g, '').trim()
             }
           }
         }
       }
+    }
 
-      if (openSourceInput) {
-        try {
-          openSourceConfig = JSON.parse(openSourceInput)
-        } catch {
-          const lines = openSourceInput.split('\n').filter(line => line.trim())
-          openSourceConfig = {}
-          for (const line of lines) {
-            const match = line.match(/^\s*(\w+):\s*(.+)$/)
-            if (match) {
-              const [, key, value] = match
-              openSourceConfig[key] = value.replace(/[\"']/g, '').trim()
-            }
+    if (openSourceInput) {
+      try {
+        openSourceConfig = JSON.parse(openSourceInput)
+      } catch {
+        const lines = openSourceInput.split('\n').filter(line => line.trim())
+        openSourceConfig = {}
+        for (const line of lines) {
+          const match = line.match(/^\s*(\w+):\s*(.+)$/)
+          if (match) {
+            const [, key, value] = match
+            openSourceConfig[key] = value.replace(/[\"']/g, '').trim()
           }
         }
       }
+    }
 
-      const hqInput = core.getInput('hq')
-      const lqInput = core.getInput('lq')
+    const hqInput = core.getInput('hq')
+    const lqInput = core.getInput('lq')
 
-      let hqConfig: any = null
-      let lqConfig: any = null
+    let hqConfig: any = null
+    let lqConfig: any = null
 
-      if (hqInput) {
-        try {
-          hqConfig = JSON.parse(hqInput)
-        } catch {
-          const lines = hqInput.split('\n').filter(line => line.trim())
-          hqConfig = {}
-          for (const line of lines) {
-            const match = line.match(/^\s*(\w+):\s*(.+)$/)
-            if (match) {
-              const [, key, value] = match
-              if (key === 'escrow_ignore') {
-                if (value.includes('[') && value.includes(']')) {
-                  hqConfig[key] = value
-                    .replace(/[\[\]'"`]/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                } else {
-                  hqConfig[key] = value
-                    .replace(/[\"']/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                }
+    if (hqInput) {
+      try {
+        hqConfig = JSON.parse(hqInput)
+      } catch {
+        const lines = hqInput.split('\n').filter(line => line.trim())
+        hqConfig = {}
+        for (const line of lines) {
+          const match = line.match(/^\s*(\w+):\s*(.+)$/)
+          if (match) {
+            const [, key, value] = match
+            if (key === 'escrow_ignore') {
+              if (value.includes('[') && value.includes(']')) {
+                hqConfig[key] = value
+                  .replace(/[\[\]'"`]/g, '')
+                  .split(',')
+                  .map(s => s.trim())
               } else {
-                hqConfig[key] = value.replace(/[\"']/g, '').trim()
+                hqConfig[key] = value
+                  .replace(/[\"']/g, '')
+                  .split(',')
+                  .map(s => s.trim())
               }
+            } else {
+              hqConfig[key] = value.replace(/[\"']/g, '').trim()
             }
           }
         }
       }
+    }
 
-      if (lqInput) {
-        try {
-          lqConfig = JSON.parse(lqInput)
-        } catch {
-          const lines = lqInput.split('\n').filter(line => line.trim())
-          lqConfig = {}
-          for (const line of lines) {
-            const match = line.match(/^\s*(\w+):\s*(.+)$/)
-            if (match) {
-              const [, key, value] = match
-              if (key === 'escrow_ignore') {
-                if (value.includes('[') && value.includes(']')) {
-                  lqConfig[key] = value
-                    .replace(/[\[\]'"`]/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                } else {
-                  lqConfig[key] = value
-                    .replace(/[\"']/g, '')
-                    .split(',')
-                    .map(s => s.trim())
-                }
+    if (lqInput) {
+      try {
+        lqConfig = JSON.parse(lqInput)
+      } catch {
+        const lines = lqInput.split('\n').filter(line => line.trim())
+        lqConfig = {}
+        for (const line of lines) {
+          const match = line.match(/^\s*(\w+):\s*(.+)$/)
+          if (match) {
+            const [, key, value] = match
+            if (key === 'escrow_ignore') {
+              if (value.includes('[') && value.includes(']')) {
+                lqConfig[key] = value
+                  .replace(/[\[\]'"`]/g, '')
+                  .split(',')
+                  .map(s => s.trim())
               } else {
-                lqConfig[key] = value.replace(/[\"']/g, '').trim()
+                lqConfig[key] = value
+                  .replace(/[\"']/g, '')
+                  .split(',')
+                  .map(s => s.trim())
               }
+            } else {
+              lqConfig[key] = value.replace(/[\"']/g, '').trim()
             }
           }
         }
       }
+    }
 
-      const shouldCreateEscrowed = !!escrowedConfig
-      const shouldCreateOpenSource = !!openSourceConfig
-      const shouldCreateHQ = !!hqConfig
-      const shouldCreateLQ = !!lqConfig
+    const shouldCreateEscrowed = !!escrowedConfig
+    const shouldCreateOpenSource = !!openSourceConfig
+    const shouldCreateHQ = !!hqConfig
+    const shouldCreateLQ = !!lqConfig
 
-      const uploadTypes = []
-      if (shouldCreateEscrowed) uploadTypes.push('escrowed')
-      if (shouldCreateOpenSource) uploadTypes.push('open-source')
-      if (shouldCreateHQ) uploadTypes.push('HQ')
-      if (shouldCreateLQ) uploadTypes.push('LQ')
-      core.info(`🚀 Uploading: ${uploadTypes.join(', ')}`)
+    const uploadTypes = []
+    if (shouldCreateEscrowed) uploadTypes.push('escrowed')
+    if (shouldCreateOpenSource) uploadTypes.push('open-source')
+    if (shouldCreateHQ) uploadTypes.push('HQ')
+    if (shouldCreateLQ) uploadTypes.push('LQ')
+    core.info(`🚀 Uploading: ${uploadTypes.join(', ')}`)
 
-      if (
-        shouldCreateEscrowed ||
-        shouldCreateOpenSource ||
-        shouldCreateHQ ||
-        shouldCreateLQ
-      ) {
-        const buildOptions: BuildOptions = {
-          createEscrowed: shouldCreateEscrowed,
-          createOpenSource: shouldCreateOpenSource,
-          createHq: shouldCreateHQ,
-          createLq: shouldCreateLQ,
-          escrowedConfig: escrowedConfig || undefined,
-          openSourceConfig: openSourceConfig || undefined,
-          hqConfig: hqConfig || undefined,
-          lqConfig: lqConfig || undefined
+    if (
+      shouldCreateEscrowed ||
+      shouldCreateOpenSource ||
+      shouldCreateHQ ||
+      shouldCreateLQ
+    ) {
+      const buildOptions: BuildOptions = {
+        createEscrowed: shouldCreateEscrowed,
+        createOpenSource: shouldCreateOpenSource,
+        createHq: shouldCreateHQ,
+        createLq: shouldCreateLQ,
+        escrowedConfig: escrowedConfig || undefined,
+        openSourceConfig: openSourceConfig || undefined,
+        hqConfig: hqConfig || undefined,
+        lqConfig: lqConfig || undefined
+      }
+
+      const baseAssetName = assetName || basename(getEnv('GITHUB_WORKSPACE'))
+      const zipPaths: ZipPaths = await createVersions(
+        buildOptions,
+        baseAssetName
+      )
+
+      if (zipPaths.escrowed && shouldCreateEscrowed) {
+        let escrowedId: string
+
+        if (escrowedConfig?.asset_id) {
+          escrowedId = escrowedConfig.asset_id
+        } else if (escrowedConfig?.asset_name) {
+          escrowedId = await resolveAssetId(escrowedConfig.asset_name, cookies)
+        } else {
+          throw new Error('Escrowed config must include asset_id or asset_name')
         }
 
-        const baseAssetName = assetName || basename(getEnv('GITHUB_WORKSPACE'))
-        const zipPaths = await createVersions(buildOptions, baseAssetName)
+        core.info('🚀 Uploading escrowed version...')
+        await uploadZip(zipPaths.escrowed, escrowedId, chunkSize, cookies)
+      }
 
-        if (zipPaths.escrowed && shouldCreateEscrowed) {
-          let escrowedId: string
+      if (zipPaths.openSource && shouldCreateOpenSource) {
+        let openSourceId: string
 
-          if (escrowedConfig?.asset_id) {
-            escrowedId = escrowedConfig.asset_id
-          } else if (escrowedConfig?.asset_name) {
-            escrowedId = await resolveAssetId(
-              escrowedConfig.asset_name,
-              cookies
-            )
-          } else {
-            throw new Error(
-              'Escrowed config must include asset_id or asset_name'
-            )
-          }
-
-          core.info('🚀 Uploading escrowed version...')
-          await uploadZip(zipPaths.escrowed, escrowedId, chunkSize, cookies)
-        }
-
-        if (zipPaths.openSource && shouldCreateOpenSource) {
-          let openSourceId: string
-
-          if (openSourceConfig?.asset_id) {
-            openSourceId = openSourceConfig.asset_id
-          } else if (openSourceConfig?.asset_name) {
-            openSourceId = await resolveAssetId(
-              openSourceConfig.asset_name,
-              cookies
-            )
-          } else {
-            throw new Error(
-              'OpenSource config must include asset_id or asset_name'
-            )
-          }
-
-          core.info('🚀 Uploading open source version...')
-          await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies)
-        }
-
-        let hqZipPath: string | null = null
-        let hqId: string | null = null
-        let lqZipPath: string | null = null
-        let lqId: string | null = null
-
-        if (shouldCreateHQ && hqConfig) {
-          core.info('📦 Creating HQ version...')
-          const hqBranch = hqConfig.branch || 'main'
-          const hqIgnoreFiles = hqConfig.escrow_ignore || []
-          hqZipPath = await createHQVersion(
-            hqConfig.asset_name || `${baseAssetName}-hq`,
-            hqBranch,
-            hqIgnoreFiles
+        if (openSourceConfig?.asset_id) {
+          openSourceId = openSourceConfig.asset_id
+        } else if (openSourceConfig?.asset_name) {
+          openSourceId = await resolveAssetId(
+            openSourceConfig.asset_name,
+            cookies
           )
-
-          if (hqConfig.asset_id) {
-            hqId = hqConfig.asset_id
-          } else if (hqConfig.asset_name) {
-            hqId = await resolveAssetId(hqConfig.asset_name, cookies)
-          } else {
-            const fallbackName = `${baseAssetName}-hq`
-            hqId = await resolveAssetId(fallbackName, cookies)
-          }
-        }
-
-        if (shouldCreateLQ && lqConfig) {
-          core.info('📦 Creating LQ version...')
-          const lqBranch = lqConfig.branch || 'low-quality'
-          const lqIgnoreFiles = lqConfig.escrow_ignore || []
-          lqZipPath = await createLQVersion(
-            lqConfig.asset_name || `${baseAssetName}-lq`,
-            lqBranch,
-            lqIgnoreFiles
+        } else {
+          throw new Error(
+            'OpenSource config must include asset_id or asset_name'
           )
-
-          if (lqConfig.asset_id) {
-            lqId = lqConfig.asset_id
-          } else if (lqConfig.asset_name) {
-            lqId = await resolveAssetId(lqConfig.asset_name, cookies)
-          } else {
-            const fallbackName = `${baseAssetName}-lq`
-            lqId = await resolveAssetId(fallbackName, cookies)
-          }
         }
 
-        // Now upload both versions
-        if (hqZipPath && hqId) {
-          core.info('🚀 Uploading HQ version...')
-          await uploadZip(hqZipPath, hqId, chunkSize, cookies)
-        }
+        core.info('🚀 Uploading open source version...')
+        await uploadZip(zipPaths.openSource, openSourceId, chunkSize, cookies)
+      }
 
-        if (lqZipPath && lqId) {
-          core.info('🚀 Uploading LQ version...')
-          await uploadZip(lqZipPath, lqId, chunkSize, cookies)
-        }
-      } else {
-        // Original single upload logic
-        if (assetName) {
-          assetId = await resolveAssetId(assetName, cookies)
-        }
+      let hqZipPath: string | null = null
+      let hqId: string | null = null
+      let lqZipPath: string | null = null
+      let lqId: string | null = null
 
-        zipPath = await getZipPath(assetName, zipPath, makeZip)
-        await uploadZip(zipPath, assetId, chunkSize, cookies)
+      if (shouldCreateHQ && hqConfig) {
+        core.info('📦 Creating HQ version...')
+        const hqBranch = hqConfig.branch || 'main'
+        const hqIgnoreFiles = hqConfig.escrow_ignore || []
+        hqZipPath = await createHQVersion(
+          hqConfig.asset_name || `${baseAssetName}-hq`,
+          hqBranch,
+          hqIgnoreFiles
+        )
+
+        if (hqConfig.asset_id) {
+          hqId = hqConfig.asset_id
+        } else if (hqConfig.asset_name) {
+          hqId = await resolveAssetId(hqConfig.asset_name, cookies)
+        } else {
+          const fallbackName = `${baseAssetName}-hq`
+          hqId = await resolveAssetId(fallbackName, cookies)
+        }
+      }
+
+      if (shouldCreateLQ && lqConfig) {
+        core.info('📦 Creating LQ version...')
+        const lqBranch = lqConfig.branch || 'low-quality'
+        const lqIgnoreFiles = lqConfig.escrow_ignore || []
+        lqZipPath = await createLQVersion(
+          lqConfig.asset_name || `${baseAssetName}-lq`,
+          lqBranch,
+          lqIgnoreFiles
+        )
+
+        if (lqConfig.asset_id) {
+          lqId = lqConfig.asset_id
+        } else if (lqConfig.asset_name) {
+          lqId = await resolveAssetId(lqConfig.asset_name, cookies)
+        } else {
+          const fallbackName = `${baseAssetName}-lq`
+          lqId = await resolveAssetId(fallbackName, cookies)
+        }
+      }
+
+      // Now upload both versions
+      if (hqZipPath && hqId) {
+        core.info('🚀 Uploading HQ version...')
+        await uploadZip(hqZipPath, hqId, chunkSize, cookies)
+      }
+
+      if (lqZipPath && lqId) {
+        core.info('🚀 Uploading LQ version...')
+        await uploadZip(lqZipPath, lqId, chunkSize, cookies)
       }
     } else {
-      core.error(`❌ Failed to reach CFX Portal`)
-      core.error(`Current URL: ${currentUrl}`)
-      core.error(`Expected URL to contain: portal.cfx.re`)
-      core.error(`Redirect URL was: ${redirectUrl}`)
-      throw new Error(
-        `Redirect failed. Current URL: ${currentUrl}. Make sure the provided Cookie is valid and not expired.`
-      )
+      // Original single upload logic
+      if (assetName) {
+        assetId = await resolveAssetId(assetName, cookies)
+      }
+
+      zipPath = await getZipPath(assetName, zipPath, makeZip)
+      await uploadZip(zipPath, assetId, chunkSize, cookies)
     }
   } catch (error) {
     if (error instanceof Error) {
       core.setFailed(error.message)
     }
-  } finally {
-    await browser.close()
   }
-}
-
-/**
- * Navigates to the SSO URL and waits for the page to load.
- * If the navigation fails, it will retry up to `maxRetries` times.
- * @param page
- * @param maxRetries
- * @returns {Promise<string>} The redirect URL.
- * @throws If the navigation fails after `maxRetries` attempts.
- */
-async function getRedirectUrl(page: Page, maxRetries: number): Promise<string> {
-  let loaded = false
-  let attempt = 0
-  let redirectUrl = null
-
-  while (!loaded && attempt < maxRetries) {
-    try {
-      await page.goto(getUrl('SSO'), {
-        waitUntil: 'domcontentloaded',
-        timeout: 60000
-      })
-
-      const responseBody = await page.evaluate(
-        () => JSON.parse(document.body.innerText) as SSOResponseBody
-      )
-
-      redirectUrl = responseBody.url
-
-      const forumUrl = new URL(redirectUrl).origin
-      await page.goto(forumUrl, {
-        waitUntil: 'domcontentloaded',
-        timeout: 60000
-      })
-
-      loaded = true
-    } catch {
-      core.info(
-        `⚠️ SSO navigation failed, retrying... (${attempt + 1}/${maxRetries})`
-      )
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      attempt++
-    }
-  }
-
-  if (!loaded || redirectUrl == null) {
-    throw new Error(
-      `Failed to navigate to SSO URL after ${maxRetries} attempts.`
-    )
-  }
-
-  return redirectUrl
-}
-
-/**
- * Sets the cookie for the cfx.re login.
- * @param browser
- * @param page
- * @returns {Promise<void>} Resolves when the cookie has been set.
- */
-async function setForumCookie(browser: Browser, page: Page): Promise<void> {
-  core.info('Setting cookies ...')
-
-  await browser.setCookie({
-    name: '_t',
-    value: core.getInput('cookie'),
-    domain: 'forum.cfx.re',
-    path: '/',
-    expires: -1,
-    size: 1,
-    httpOnly: true,
-    secure: true,
-    session: false
-  })
-
-  await page.evaluate(() => document.write('Cookie' + document.cookie))
-
-  core.info('Cookies set. Following redirect...')
-}
-
-/**
- * Gets the cookies from the browser.
- * @param browser
- * @returns {Promise<string>} Resolves with the cookies as a string.
- */
-async function getCookies(browser: Browser): Promise<string> {
-  return await browser
-    .cookies()
-    .then(cookies =>
-      cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
-    )
 }
 
 /**
@@ -571,7 +398,9 @@ async function startReupload(
     )
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {
-      core.error(`Re-upload request failed: ${error.response.status} ${error.response.statusText}`)
+      core.error(
+        `Re-upload request failed: ${error.response.status} ${error.response.statusText}`
+      )
       core.error(`Response body: ${JSON.stringify(error.response.data)}`)
     }
     throw error
@@ -602,7 +431,12 @@ async function uploadZip(
   chunkSize: number,
   cookies: string
 ): Promise<void> {
-  const [, versionId] = await startReupload(zipPath, assetId, chunkSize, cookies)
+  const [, versionId] = await startReupload(
+    zipPath,
+    assetId,
+    chunkSize,
+    cookies
+  )
 
   let chunkIndex = 0
 
@@ -620,12 +454,16 @@ async function uploadZip(
       contentType: 'application/octet-stream'
     })
 
-    await axios.post(getUrl('UPLOAD_CHUNK', { id: assetId, version_id: versionId }), form, {
-      headers: {
-        ...form.getHeaders(),
-        Cookie: cookies
+    await axios.post(
+      getUrl('UPLOAD_CHUNK', { id: assetId, version_id: versionId }),
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          Cookie: cookies
+        }
       }
-    })
+    )
 
     core.info(`Uploaded chunk ${chunkIndex + 1}/${chunkCount}`)
 
@@ -641,7 +479,11 @@ async function uploadZip(
  * @param cookies
  * @returns {Promise<void>} Resolves when the upload is complete.
  */
-async function completeUpload(assetId: string, versionId: number, cookies: string): Promise<void> {
+async function completeUpload(
+  assetId: string,
+  versionId: number,
+  cookies: string
+): Promise<void> {
   await axios.post(
     getUrl('COMPLETE_UPLOAD', { id: assetId, version_id: versionId }),
     {},

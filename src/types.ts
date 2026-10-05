@@ -36,6 +36,8 @@ export interface SSOResponseBody {
 export enum Urls {
   API = 'https://portal-api.cfx.re/v1/',
   SSO = 'auth/discourse?return=',
+  SSO_CALLBACK = 'auth/discourse',
+  ME = 'me',
   REUPLOAD = 'assets/{id}/re-upload',
   UPLOAD_CHUNK = 'assets/{id}/versions/{version_id}/upload-chunk',
   COMPLETE_UPLOAD = 'assets/{id}/versions/{version_id}/complete-upload',
@@ -50,7 +52,22 @@ export interface AssetConfig {
   branch?: string
 }
 
+export interface ReleaseEvent {
+  tag_name?: string
+  body?: string
+  prerelease?: boolean
+  published_at?: string
+  author?: { login?: string }
+}
+
+export interface VersionMeta {
+  version: string
+  changelog: string
+  releaseCandidate: boolean
+}
+
 export interface BuildOptions {
+  version: string
   createEscrowed: boolean
   createOpenSource: boolean
   createHq: boolean

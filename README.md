@@ -62,6 +62,33 @@ CFX provides API keys for this action.
 > `?` after the type indicates that the parameter is optional. if no assetName  
 > or assetId is provided, the repository name will be used as assetName.
 
+## Portal Versions
+
+The portal keeps up to **5 versions** per asset, each with its own version
+number, changelog and release-candidate flag. The action handles this
+automatically, so a plain release workflow needs no extra inputs:
+
+- **Version** is the release tag. Runs without a tag (e.g. `workflow_dispatch`)
+  upload `<fxmanifest version>-dev.<short sha>` as a release candidate.
+- **Changelog** is the GitHub release body. Lines written as `[+] added`,
+  `[/] changed` and `[-] removed` are grouped into Added / Changed & fixed /
+  Removed, the same way the Discord bot shows them.
+- **Release candidate** is set for GitHub pre-releases.
+- Before uploading, an existing version with the same number is replaced (so
+  re-running a failed release works) and, at 5/5, the oldest version is deleted.
+  The newest live stable version is never deleted.
+- After uploading, the action waits for the portal to process the version and
+  fails the run if the portal rejects it.
+
+| Key               | Type     | Default            | Description                                                           |
+| ----------------- | -------- | ------------------ | --------------------------------------------------------------------- |
+| version           | string?  | release tag        | Version number shown on the portal.                                   |
+| author            | string?  | Koja Scripts       | Author written into fxmanifest.lua of the built packs.                |
+| changelog         | string?  | release body       | Changelog for the version.                                            |
+| releaseCandidate  | boolean? | release prerelease | Mark the version as a release candidate.                              |
+| keepVersions      | number?  | 5                  | How many versions to keep (1-5); older ones are deleted after upload. |
+| processingTimeout | number?  | 120                | Seconds to wait for the portal to process the upload (0 disables).    |
+
 ## Multi-Version Upload Support
 
 This action supports uploading multiple versions of your resource in a single
